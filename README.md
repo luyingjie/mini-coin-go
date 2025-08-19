@@ -1,80 +1,88 @@
 # Mini-Coin-Go: 一个简单的 Go 区块链学习项目
 
-这是一个使用 Go 语言构建的极简区块链实现，旨在帮助初学者理解区块链的核心概念，如区块、哈希、工作量证明和链式结构。
+这是一个使用 Go 语言构建的极简区块链实现。项目通过 BoltDB 实现了数据持久化，并提供了一个命令行界面 (CLI) 用于与区块链进行交互。
 
 ---
 
-### 核心知识点
+### 核心特性
 
-1.  **区块 (Block)**: 区块链的基本数据单元。每个区块包含：
-    *   **时间戳 (Timestamp)**: 区块被创建的时间。
-    *   **数据 (Data)**: 存储在区块中的信息，例如交易记录。
-    *   **前一个区块的哈希 (PrevBlockHash)**: 指向上一个区块的链接，这是形成“链”的关键。
-    *   **当前区块的哈希 (Hash)**: 基于区块所有内容计算出的唯一“指纹”。
-    *   **Nonce**: 一个在“挖矿”过程中不断变化的随机数，用于找到满足条件的哈希。
-
-2.  **区块链 (Blockchain)**: 一个由区块按时间顺序链接起来的链表。第一个区块被称为“创世区块”(Genesis Block)。
-
-3.  **哈希 (Hashing)**: 使用 SHA-256 算法将��块内容转换成一个固定长度的、唯一的字符串。区块内容的任何微小变动都会导致哈希值完全不同。
-
-4.  **工作量证明 (Proof of Work - PoW)**: 一种共识机制，要求计算机执行一定的计算（即“挖矿”）才能向链中添加新区块。这确保了添加区块的难度，从而保障了区块链的安全。在这个项目中，我们通过要求区块的哈希值必须以特定数量的“0”开头来实现一个简化的 PoW。
-
-5.  **不可变性 (Immutability)**: 由于每个区块都包含了前一个区块的哈希，如果有人试图修改链中间的一个区块，该区块的哈希会改变，从而导致它后面所有区块的链接全部失效。这使得篡改区块链变得极其困难。
-
----
-
-### 关键实现步骤
-
-项目代码 `main.go` 严格按照以下步骤实现：
-
-1.  **定义 `Block` 结构体**: 创建了一个 Go 的 `struct` 来表示区块，包含上述所有核心字段。
-
-2.  **实现哈希计算与工作量证明 (挖矿)**:
-    *   创建了 `ProofOfWork` 结构体来管理挖矿过程。
-    *   `Run()` 方法执行挖矿计算：不断改变 `Nonce` 值并��新计算哈希，直到找到一个小于目标值（即哈希值前面有足够多的0）的哈希。
-    *   `Validate()` 方法用于验证一个区块的哈希是否真的满足难度要求。
-
-3.  **定义 `Blockchain` 结构体**: 用一个 `Block` 的切片 `[]*Block` 来表示整条链。
-
-4.  **创建创世区块**: `NewGenesisBlock()` 函数用于创建链的第一个区块。
-
-5.  **添加新区块**: `AddBlock()` 方法用于在链的末尾添加一个新区块。它会自动获取前一个区块的哈希，并通过挖矿为新区块找到有效的哈希。
-
-6.  **(待实现) 验证区块链**: 未来可以增加一个函数来验证整条链的完整性和有效性。
-
----
-
-### 项目结构与模块功能
-
-```
-mini-coin-go/
-├── blockchain/
-│   ├── block.go         # 存放 Block 结构体和相关方法
-│   ├── blockchain.go    # 存放 Blockchain 结构体和相关方法
-│   ├── proofofwork.go   # 存放 ProofOfWork 结构体和相关方法
-│   └── utils.go         # 存放一些辅助函数
-├── go.mod             # Go 模块文件，用于管理依赖
-└── main.go            # 程序主入口，调用 blockchain 包
-```
-
-**模块功能说明:**
-
-*   **`blockchain/block.go`**: 定义了 `Block` 结构体，以及创建新区块 (`NewBlock`) 和创世区块 (`NewGenesisBlock`) 的函数。
-*   **`blockchain/blockchain.go`**: 定义了 `Blockchain` 结构体，以及创建新链 (`NewBlockchain`) 和添加区块 (`AddBlock`) 的方法。
-*   **`blockchain/proofofwork.go`**: 封装了所有关于工作量证明的逻辑，包括 `ProofOfWork` 结构体和其 `Run`, `Validate` 方法。
-*   **`blockchain/utils.go`**: 包含项目所需的辅助函数，例如 `IntToHex`。
-*   **`main.go`**: 项目的启动入口。它导入 `blockchain` 包，并调用其功能来创建链、添加区块并打印信息，保持了主函数的简洁性。
+- **区块链核心**: 实现了区块、链、哈希和工作量证明 (Proof of Work) 等核心概念。
+- **数据持久化**: 使用嵌入式键值数据库 BoltDB (`bbolt`) 将区块链数据存储在本地文件 (`blockchain.db`) 中，确保了数据的持久性。
+- **命令行界面 (CLI)**: 提供了一个简单的命令行工具来与区块链交互，如添加新区块和打印整条链。
 
 ---
 
 ### 如何运行
 
+#### 1. 环境准备
+
 确保你已经安装了 Go 环境 (Go 1.13+)。
 
-在项目根目录下，打开终端并执行以下命令：
+#### 2. 构建项目
+
+在项目根目录下，打开终端并执行以下命令来编译生成可执行文件：
 
 ```bash
-go run main.go
+go build
 ```
 
-你将会看到程序输出挖矿过程，并最终打印出三个区块（1个创世区块 + 2个新区块）的详细信息。
+这将会生成一个名为 `mini-coin-go.exe` (Windows) 或 `mini-coin-go` (macOS/Linux) 的文件。
+
+#### 3. 使用方法
+
+通过命令行��区块链进行交互。
+
+**打印区块链:**
+
+使用 `printchain` 命令来显示链上的所有区块。
+
+```bash
+# Windows
+.\mini-coin-go.exe printchain
+
+# macOS / Linux
+./mini-coin-go printchain
+```
+
+**添加新区块:**
+
+使用 `addblock` 命令并附带 `-data` 标志来向链上添加一个新区块。
+
+```bash
+# Windows
+.\mini-coin-go.exe addblock -data "这里是你要存储的数据"
+
+# macOS / Linux
+./mini-coin-go addblock -data "这里是你要存储的数据"
+```
+
+**示例:**
+
+```bash
+# 添加第一个区块
+.\mini-coin-go.exe addblock -data "Send 1 BTC to Ivan"
+
+# 添加第二个区块
+.\mini-coin-go.exe addblock -data "Send 2 more BTC to Ivan"
+
+# 查看结果
+.\mini-coin-go.exe printchain
+```
+
+---
+
+### 项目结构
+
+```
+mini-coin-go/
+├── blockchain/
+│   ├── block.go         # Block 结构体, 序列化/反序列化
+│   ├── blockchain.go    # Blockchain 结构体, 数据库交互, 迭代器
+│   ├── proofofwork.go   # 工作量证明逻辑
+│   └── utils.go         # 辅助函数
+├── cli.go             # 命令行界面逻辑
+├── go.mod             # Go 模块文件
+├── go.sum             # 依赖项校验和
+├── main.go            # 程序主入口，调用 CLI
+└── blockchain.db      # (自动生成) 区块链数据库文件
+```

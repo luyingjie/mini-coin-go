@@ -1,6 +1,9 @@
 package blockchain
 
 import (
+	"bytes"
+	"encoding/gob"
+	"log"
 	"time"
 )
 
@@ -11,6 +14,32 @@ type Block struct {
 	PrevBlockHash []byte // 前一个区块的哈希值
 	Hash          []byte // 当前区块的哈希值
 	Nonce         int    // 工作量证明的计数器
+}
+
+// Serialize 将区块序列化为一个字节切片
+func (b *Block) Serialize() []byte {
+	var result bytes.Buffer
+	encoder := gob.NewEncoder(&result)
+
+	err := encoder.Encode(b)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return result.Bytes()
+}
+
+// DeserializeBlock 将字节切片反序列化为一个区块
+func DeserializeBlock(d []byte) *Block {
+	var block Block
+
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+	err := decoder.Decode(&block)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return &block
 }
 
 // NewBlock 创建并返回一个新区块
