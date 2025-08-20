@@ -1,13 +1,14 @@
 package main
 
 import (
-	"mini-coin-go/blockchain"
+	"os"
+
+	"mini-coin-go/cmd"
 )
 
 func main() {
-	bc := blockchain.NewBlockchain()
-	defer bc.DB.Close() // 确保程序结束时关闭数据库
+	defer os.Exit(0)
 
-	cli := CLI{bc}
+	cli := cmd.CLI{}
 	cli.Run()
 }

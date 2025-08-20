@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"encoding/hex"
 	"log"
 
 	"go.etcd.io/bbolt"
@@ -8,6 +9,142 @@ import (
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
+const utxoBucket = "chainstate"
+
+// UTXOSet 表示 UTXO 集合
+type UTXOSet struct {
+	Blockchain *Blockchain
+}
+
+// FindSpendableOutputs 查找并返回未花费的输出，以便在输入中引用
+func (u UTXOSet) FindSpendableOutputs(pubkeyHash []byte, amount int) (int, map[string][]int) {
+	unspentOutputs := make(map[string][]int)
+	accumulated := 0
+
+	u.Blockchain.DB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			txID := string(k)
+			outs := DeserializeOutputs(v)
+
+			for outIdx, out := range outs.Outputs {
+				if out.IsLockedWithKey(pubkeyHash) && accumulated < amount {
+					accumulated += out.Value
+					unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	return accumulated, unspentOutputs
+}
+
+// FindUTXO 查找所有未花费的交易输出并返回已移除花费输出的交易
+func (u UTXOSet) FindUTXO(pubkeyHash []byte) []TXOutput {
+	var UTXOs []TXOutput
+
+	u.Blockchain.DB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			outs := DeserializeOutputs(v)
+
+			for _, out := range outs.Outputs {
+				if out.IsLockedWithKey(pubkeyHash) {
+					UTXOs = append(UTXOs, out)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	return UTXOs
+}
+
+// Reindex 重建 UTXO 集合
+func (u UTXOSet) Reindex() {
+	err := u.Blockchain.DB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+		if b != nil {
+			err := tx.DeleteBucket([]byte(utxoBucket))
+			if err != nil {
+				log.Panic(err)
+			}
+		}
+
+		_, err := tx.CreateBucket([]byte(utxoBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	utxos := u.Blockchain.FindUTXO()
+
+	err = u.Blockchain.DB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+		for txID, outs := range utxos {
+			err := b.Put([]byte(txID), outs.Serialize())
+			if err != nil {
+				log.Panic(err)
+			}
+		}
+		return nil
+	})
+}
+
+// Update 使用区块中的交易更新 UTXO 集合
+// 该区块是区块链的最后一个区块
+func (u UTXOSet) Update(block *Block) {
+	err := u.Blockchain.DB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(utxoBucket))
+
+		for _, tx := range block.Transactions {
+			if tx.IsCoinbase() == false {
+				for _, vin := range tx.Vin {
+					updatedOuts := TXOutputs{[]TXOutput{}}
+					outsBytes := b.Get(vin.Txid)
+					outs := DeserializeOutputs(outsBytes)
+
+					for outIdx, out := range outs.Outputs {
+						if outIdx != vin.Vout {
+							updatedOuts.Outputs = append(updatedOuts.Outputs, out)
+						}
+					}
+
+					if len(updatedOuts.Outputs) == 0 {
+						err := b.Delete(vin.Txid)
+						if err != nil {
+							log.Panic(err)
+						}
+					} else {
+						err := b.Put(vin.Txid, updatedOuts.Serialize())
+						if err != nil {
+							log.Panic(err)
+						}
+					}
+				}
+			}
+			err := b.Put(tx.ID, TXOutputs{tx.Vout}.Serialize())
+			if err != nil {
+				log.Panic(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+}
 
 // Blockchain 结构体现在只包含数据库连接和链的末端哈希
 type Blockchain struct {
@@ -16,7 +153,7 @@ type Blockchain struct {
 }
 
 // AddBlock 将新区块保存到数据库中
-func (bc *Blockchain) AddBlock(data string) {
+func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	var lastHash []byte
 
 	// 查看数据库以获取最后一个区块的哈希
@@ -29,7 +166,7 @@ func (bc *Blockchain) AddBlock(data string) {
 		log.Panic(err)
 	}
 
-	newBlock := NewBlock(data, lastHash)
+	newBlock := NewBlock(transactions, lastHash)
 
 	// 将新区块存入数据库并更新 "l" 键
 	err = bc.DB.Update(func(tx *bbolt.Tx) error {
@@ -63,7 +200,8 @@ func NewBlockchain() *Blockchain {
 
 		if b == nil {
 			// 如果 bucket 不存在，说明链是新的
-			genesis := NewGenesisBlock()
+			cbtx := NewCoinbaseTX("Genesis Block Reward", "") // 创世区块的 Coinbase 交易
+			genesis := NewBlock([]*Transaction{cbtx}, []byte{})
 			b, err := tx.CreateBucket([]byte(blocksBucket))
 			if err != nil {
 				log.Panic(err)
@@ -89,8 +227,91 @@ func NewBlockchain() *Blockchain {
 	}
 
 	bc := Blockchain{tip, db}
+	utxoSet := UTXOSet{&bc}
+	utxoSet.Reindex()
 
 	return &bc
+}
+
+func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
+	utxo := make(map[string]TXOutputs)
+	spentTXOs := make(map[string][]int)
+
+	bci := bc.Iterator()
+
+	for {
+		block := bci.Next()
+
+		for _, tx := range block.Transactions {
+			if tx.IsCoinbase() == false {
+				for _, in := range tx.Vin {
+					inTxID := string(in.Txid)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
+				}
+			}
+
+			outs := TXOutputs{}
+			for outIdx, out := range tx.Vout {
+				if spentTXOs[string(tx.ID)] != nil {
+					isSpent := false
+					for _, spentOutIdx := range spentTXOs[string(tx.ID)] {
+						if spentOutIdx == outIdx {
+							isSpent = true
+							break
+						}
+					}
+					if isSpent == false {
+						outs.Outputs = append(outs.Outputs, out)
+					}
+				} else {
+					outs.Outputs = append(outs.Outputs, out)
+
+				}
+			}
+			utxo[string(tx.ID)] = outs
+		}
+
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
+	}
+	return utxo
+}
+
+// NewUTXOTransaction 创建一个新的交易
+func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transaction {
+	var inputs []TXInput
+	var outputs []TXOutput
+
+	acc, validOutputs := UTXOSet.FindSpendableOutputs([]byte(from), amount)
+
+	if acc < amount {
+		log.Panic("ERROR: Not enough funds")
+	}
+
+	// Build a list of inputs
+	for txid, outs := range validOutputs {
+		txID, err := hex.DecodeString(txid)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		for _, out := range outs {
+			input := TXInput{txID, out, from}
+			inputs = append(inputs, input)
+		}
+	}
+
+	// Build a list of outputs
+	outputs = append(outputs, TXOutput{amount, []byte(to)})
+	if acc > amount {
+		outputs = append(outputs, TXOutput{acc - amount, []byte(from)}) // Change
+	}
+
+	tx := Transaction{nil, inputs, outputs}
+	tx.ID = tx.Hash()
+
+	return &tx
 }
 
 // BlockchainIterator 用于遍历区块链

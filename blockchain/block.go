@@ -9,11 +9,11 @@ import (
 
 // Block 是区块链的基本组成单位
 type Block struct {
-	Timestamp     int64  // 时间戳, 区块创建的时间
-	Data          []byte // 区块存储的实际有效信息，例如交易
-	PrevBlockHash []byte // 前一个区块的哈希值
-	Hash          []byte // 当前区块的哈希值
-	Nonce         int    // 工作量证明的计数器
+	Timestamp     int64          // 时间戳, 区块创建的时间
+	Transactions  []*Transaction // 区块存储的实际有效信息，例如交易
+	PrevBlockHash []byte         // 前一个区块的哈希值
+	Hash          []byte         // 当前区块的哈希值
+	Nonce         int            // 工作量证明的计数器
 }
 
 // Serialize 将区块序列化为一个字节切片
@@ -42,11 +42,23 @@ func DeserializeBlock(d []byte) *Block {
 	return &block
 }
 
+func (b *Block) HashTransactions() []byte {
+	var transactions [][]byte
+
+	for _, tx := range b.Transactions {
+		transactions = append(transactions, tx.ID)
+	}
+
+	mTree := NewMerkleTree(transactions)
+
+	return mTree.RootNode.Data
+}
+
 // NewBlock 创建并返回一个新区块
-func NewBlock(data string, prevBlockHash []byte) *Block {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 	block := &Block{
 		Timestamp:     time.Now().Unix(),
-		Data:          []byte(data),
+		Transactions:  transactions,
 		PrevBlockHash: prevBlockHash,
 		Hash:          []byte{},
 		Nonce:         0,
@@ -62,5 +74,5 @@ func NewBlock(data string, prevBlockHash []byte) *Block {
 
 // NewGenesisBlock 创建并返回创世区块
 func NewGenesisBlock() *Block {
-	return NewBlock("Genesis Block", []byte{})
+	return NewBlock([]*Transaction{NewCoinbaseTX("Genesis Block Reward", "")}, []byte{})
 }

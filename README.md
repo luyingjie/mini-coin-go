@@ -7,8 +7,9 @@
 ### 核心特性
 
 - **区块链核心**: 实现了区块、链、哈希和工作量证明 (Proof of Work) 等核心概念。
+- **交易与 UTXO**: 引入了交易（Transaction）和未花费交易输出（UTXO）模型，支持转账和余额查询。
 - **数据持久化**: 使用嵌入式键值数据库 BoltDB (`bbolt`) 将区块链数据存储在本地文件 (`blockchain.db`) 中，确保了数据的持久性。
-- **命令行界面 (CLI)**: 提供了一个简单的命令行工具来与区块链交互，如添加新区块和打印整条链。
+- **命令行界面 (CLI)**: 提供了一个简单的命令行工具来与区块链交互，如创建钱包、查询余额、发送交易和打印整条链。
 
 ---
 
@@ -30,11 +31,71 @@ go build
 
 #### 3. 使用方法
 
-通过命令行��区块链进行交互。
+通过��令行与区块链进行交互。
+
+**创建区块链:**
+
+使用 `createblockchain` 命令来创建新的区块链，并指定接收创世区块奖励的地址。
+
+```bash
+# Windows
+.\mini-coin-go.exe createblockchain -address YOUR_ADDRESS
+
+# macOS / Linux
+./mini-coin-go createblockchain -address YOUR_ADDRESS
+```
+
+**创建钱包:**
+
+使用 `createwallet` 命令来生成一个新的钱包地址。
+
+```bash
+# Windows
+.\mini-coin-go.exe createwallet
+
+# macOS / Linux
+./mini-coin-go createwallet
+```
+
+**查询余额:**
+
+使用 `getbalance` 命令来查询某个地址的余额。
+
+```bash
+# Windows
+.\mini-coin-go.exe getbalance -address YOUR_ADDRESS
+
+# macOS / Linux
+./mini-coin-go getbalance -address YOUR_ADDRESS
+```
+
+**列出所有地址:**
+
+使用 `listaddresses` 命令来列出所有已创建的钱包地址。
+
+```bash
+# Windows
+.\mini-coin-go.exe listaddresses
+
+# macOS / Linux
+./mini-coin-go listaddresses
+```
+
+**发送交易:**
+
+使用 `send` 命令来从一个地址向另一个地址发送指定金额的币。
+
+```bash
+# Windows
+.\mini-coin-go.exe send -from FROM_ADDRESS -to TO_ADDRESS -amount AMOUNT
+
+# macOS / Linux
+./mini-coin-go send -from FROM_ADDRESS -to TO_ADDRESS -amount AMOUNT
+```
 
 **打印区块链:**
 
-使用 `printchain` 命令来显示链上的所有区块。
+使用 `printchain` 命令来显示链上的所有区块和交易详情。
 
 ```bash
 # Windows
@@ -42,31 +103,6 @@ go build
 
 # macOS / Linux
 ./mini-coin-go printchain
-```
-
-**添加新区块:**
-
-使用 `addblock` 命令并附带 `-data` 标志来向链上添加一个新区块。
-
-```bash
-# Windows
-.\mini-coin-go.exe addblock -data "这里是你要存储的数据"
-
-# macOS / Linux
-./mini-coin-go addblock -data "这里是你要存储的数据"
-```
-
-**示例:**
-
-```bash
-# 添加第一个区块
-.\mini-coin-go.exe addblock -data "Send 1 BTC to Ivan"
-
-# 添加第二个区块
-.\mini-coin-go.exe addblock -data "Send 2 more BTC to Ivan"
-
-# 查看结果
-.\mini-coin-go.exe printchain
 ```
 
 ---
@@ -77,9 +113,14 @@ go build
 mini-coin-go/
 ├── blockchain/
 │   ├── block.go         # Block 结构体, 序列化/反序列化
-│   ├── blockchain.go    # Blockchain 结构体, 数据库交互, 迭代器
+│   ├── blockchain.go    # Blockchain 结构体, 数据库交互, 迭代器, UTXO 管理
+│   ├── merkle.go        # Merkle Tree 实现
 │   ├── proofofwork.go   # 工作量证明逻辑
-│   └── utils.go         # 辅助函数
+│   ├── transaction.go   # 交易 (Transaction), 输入 (TXInput), 输出 (TXOutput) 结构体
+│   └── utils.go         # 辅助函数 (哈希, Base58 编码/解码, 地址验证)
+├── wallet/
+│   ├── wallet.go        # 钱包 (Wallet) 结构体, 密钥生成, 地址生成
+│   └── wallets.go       # 钱包集合管理, 钱包文件存储
 ├── cli.go             # 命令行界面逻辑
 ├── go.mod             # Go 模块文件
 ├── go.sum             # 依赖项校验和
