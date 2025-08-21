@@ -8,17 +8,6 @@ import (
 	"log"
 )
 
-// TXOutput 结构:
-type TXOutput struct {
-	Value      int    // 金额
-	ScriptPubKey []byte // 锁定脚本，这里我们可以简化为接收方的地址
-}
-
-// IsLockedWithKey 检查输出是否可以用提供的密钥解锁
-func (out *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
-	return bytes.Compare(out.ScriptPubKey, pubKeyHash) == 0
-}
-
 // TXInput 结构:
 type TXInput struct {
 	Txid      []byte // 引用来源交易的 ID (哈希)
@@ -26,34 +15,16 @@ type TXInput struct {
 	ScriptSig string // 解锁脚本，这里我们可以简化为发送方的地址
 }
 
-// Transaction 结构:
-type Transaction struct {
-	ID   []byte     // 交易的唯一标识 (哈希)
-	Vin  []TXInput  // 交易输入
-	Vout []TXOutput // 交易输出
+// TXOutput 结构:
+type TXOutput struct {
+	Value        int    // 金额
+	ScriptPubKey []byte // 锁定脚本，这里我们可以简化为接收方的地址
 }
 
-// Hash 计算交易的哈希值
-func (tx *Transaction) Hash() []byte {
-	var hash [32]byte
-
-	txCopy := *tx
-	txCopy.ID = []byte{}
-
-	var res bytes.Buffer
-	encoder := gob.NewEncoder(&res)
-	err := encoder.Encode(txCopy)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	hash = sha256.Sum256(res.Bytes())
-
-	return hash[:]
-}
-
-func (tx *Transaction) IsCoinbase() bool {
-	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
+// IsLockedWithKey 检查输出是否可以用提供的密钥解锁
+func (out *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
+	// return bytes.Compare(out.ScriptPubKey, pubKeyHash) == 0
+	return bytes.Equal(out.ScriptPubKey, pubKeyHash)
 }
 
 // TXOutputs 收集 TXOutput
@@ -85,6 +56,36 @@ func DeserializeOutputs(data []byte) TXOutputs {
 	}
 
 	return outputs
+}
+
+// Transaction 结构:
+type Transaction struct {
+	ID   []byte     // 交易的唯一标识 (哈希)
+	Vin  []TXInput  // 交易输入
+	Vout []TXOutput // 交易输出
+}
+
+// Hash 计算交易的哈希值
+func (tx *Transaction) Hash() []byte {
+	var hash [32]byte
+
+	txCopy := *tx
+	txCopy.ID = []byte{}
+
+	var res bytes.Buffer
+	encoder := gob.NewEncoder(&res)
+	err := encoder.Encode(txCopy)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	hash = sha256.Sum256(res.Bytes())
+
+	return hash[:]
+}
+
+func (tx *Transaction) IsCoinbase() bool {
+	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
 // NewCoinbaseTX 创建并返回一个 Coinbase 交易
