@@ -24,6 +24,9 @@ func NewWallets() (*Wallets, error) {
 	wallets.Wallets = make(map[string]*Wallet)
 
 	err := wallets.LoadFromFile()
+	if os.IsNotExist(err) {
+		return &wallets, nil
+	}
 
 	return &wallets, err
 }
@@ -55,6 +58,10 @@ func (ws Wallets) GetWallet(address string) Wallet {
 }
 
 // LoadFromFile 从文件中加载钱包
+func init() {
+	gob.Register(elliptic.P256())
+}
+
 func (ws *Wallets) LoadFromFile() error {
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return err
@@ -66,7 +73,6 @@ func (ws *Wallets) LoadFromFile() error {
 	}
 
 	var wallets Wallets
-	gob.Register(elliptic.P256())
 	decoder := gob.NewDecoder(bytes.NewReader(fileContent))
 	err = decoder.Decode(&wallets)
 	if err != nil {
@@ -81,7 +87,6 @@ func (ws *Wallets) LoadFromFile() error {
 // SaveToFile 将钱包保存到文件
 func (ws Wallets) SaveToFile() {
 	var content bytes.Buffer
-	gob.Register(elliptic.P256())
 	encoder := gob.NewEncoder(&content)
 	err := encoder.Encode(ws)
 	if err != nil {

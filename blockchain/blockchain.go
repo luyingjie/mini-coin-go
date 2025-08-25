@@ -25,14 +25,19 @@ func (u UTXOSet) FindSpendableOutputs(pubkeyHash []byte, amount int) (int, map[s
 		b := tx.Bucket([]byte(utxoBucket))
 		c := b.Cursor()
 
+	Work:
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			txID := string(k)
+			txID := hex.EncodeToString(k)
 			outs := DeserializeOutputs(v)
 
 			for outIdx, out := range outs.Outputs {
-				if out.IsLockedWithKey(pubkeyHash) && accumulated < amount {
+				if out.IsLockedWithKey(pubkeyHash) {
 					accumulated += out.Value
 					unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
+
+					if accumulated >= amount {
+						break Work
+					}
 				}
 			}
 		}
@@ -93,7 +98,7 @@ func (u UTXOSet) Reindex() {
 	err = u.Blockchain.DB.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(utxoBucket))
 		for txID, outs := range utxos {
-			err := b.Put([]byte(txID), outs.Serialize())
+			err := b.Put([]byte(hex.EncodeToString([]byte(txID))), outs.Serialize())
 			if err != nil {
 				log.Panic(err)
 			}
@@ -153,7 +158,7 @@ type Blockchain struct {
 }
 
 // AddBlock 将新区块保存到数据库中
-func (bc *Blockchain) MineBlock(transactions []*Transaction) {
+func (bc *Blockchain) MineBlock(transactions []*Transaction, minerAddress string) {
 	var lastHash []byte
 
 	// 查看数据库以获取最后一个区块的哈希
@@ -165,6 +170,10 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	if err != nil {
 		log.Panic(err)
 	}
+
+	// Create a coinbase transaction for the miner
+	cbtx := NewCoinbaseTX(minerAddress, "")
+	transactions = append([]*Transaction{cbtx}, transactions...)
 
 	newBlock := NewBlock(transactions, lastHash)
 
@@ -187,8 +196,8 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	}
 }
 
-// NewBlockchain 创建一个新的区块链数据库，如果不存在的话
-func NewBlockchain() *Blockchain {
+// NewBlockchain 创建一���新的区块链数据库，如果不存在的话
+func NewBlockchain(address string) *Blockchain {
 	var tip []byte
 	db, err := bbolt.Open(dbFile, 0600, nil)
 	if err != nil {
@@ -200,7 +209,7 @@ func NewBlockchain() *Blockchain {
 
 		if b == nil {
 			// 如果 bucket 不存在，说明链是新的
-			cbtx := NewCoinbaseTX("Genesis Block Reward", "") // 创世区块的 Coinbase 交易
+			cbtx := NewCoinbaseTX(address, "") // 创世区块的 Coinbase 交易
 			genesis := NewBlock([]*Transaction{cbtx}, []byte{})
 			b, err := tx.CreateBucket([]byte(blocksBucket))
 			if err != nil {
@@ -227,8 +236,8 @@ func NewBlockchain() *Blockchain {
 	}
 
 	bc := Blockchain{tip, db}
-	utxoSet := UTXOSet{&bc}
-	utxoSet.Reindex()
+	// utxoSet := UTXOSet{&bc}
+	// utxoSet.Reindex()
 
 	return &bc
 }
@@ -283,7 +292,10 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 	var inputs []TXInput
 	var outputs []TXOutput
 
-	acc, validOutputs := UTXOSet.FindSpendableOutputs([]byte(from), amount)
+	pubKeyHash := Base58Decode([]byte(from))
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+
+	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 
 	if acc < amount {
 		log.Panic("ERROR: Not enough funds")
@@ -303,9 +315,9 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 	}
 
 	// Build a list of outputs
-	outputs = append(outputs, TXOutput{amount, []byte(to)})
+	outputs = append(outputs, TXOutput{amount, Base58Decode([]byte(to))[1 : len(Base58Decode([]byte(to)))-4]})
 	if acc > amount {
-		outputs = append(outputs, TXOutput{acc - amount, []byte(from)}) // Change
+		outputs = append(outputs, TXOutput{acc - amount, Base58Decode([]byte(from))[1 : len(Base58Decode([]byte(from)))-4]}) // Change
 	}
 
 	tx := Transaction{nil, inputs, outputs}

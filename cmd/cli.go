@@ -40,7 +40,7 @@ func (cli *CLI) createBlockchain(address string) {
 	if !blockchain.ValidateAddress(address) {
 		log.Panic("ERROR: Address is not valid")
 	}
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain(address)
 	defer bc.DB.Close()
 
 	utxoSet := blockchain.UTXOSet{bc}
@@ -63,10 +63,11 @@ func (cli *CLI) getBalance(address string) {
 	if !blockchain.ValidateAddress(address) {
 		log.Panic("ERROR: Address is not valid")
 	}
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain("") // Pass empty string as address for existing blockchain
 	defer bc.DB.Close()
 
 	utxoSet := blockchain.UTXOSet{bc}
+	utxoSet.Reindex() // Reindex UTXO set for current blockchain state
 	balance := 0
 	pubKeyHash := blockchain.Base58Decode([]byte(address))
 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
@@ -94,7 +95,7 @@ func (cli *CLI) listAddresses() {
 
 // printChain 打印区块链
 func (cli *CLI) printChain() {
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain("") // Pass empty string as address for existing blockchain
 	defer bc.DB.Close()
 
 	bci := bc.Iterator()
@@ -102,22 +103,22 @@ func (cli *CLI) printChain() {
 	for {
 		block := bci.Next()
 
-		fmt.Printf("============ Block %x ============\n", block.Hash)
-		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
+		fmt.Printf("============ Block %x ============%s", block.Hash, "\n")
+		fmt.Printf("Prev. hash: %x%s", block.PrevBlockHash, "\n")
 		pow := blockchain.NewProofOfWork(block)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
-		fmt.Printf("Timestamp: %d\n", block.Timestamp)
-		fmt.Printf("Nonce: %d\n", block.Nonce)
+		fmt.Printf("PoW: %s%s", strconv.FormatBool(pow.Validate()), "\n")
+		fmt.Printf("Timestamp: %d%s", block.Timestamp, "\n")
+		fmt.Printf("Nonce: %d%s", block.Nonce, "\n")
 		fmt.Println("Transactions:")
 		for _, tx := range block.Transactions {
-			fmt.Printf("%x\n", tx.ID)
-			fmt.Printf("  -Vins:\n")
+			fmt.Printf("%x%s", tx.ID, "\n")
+			fmt.Printf("  -Vins:%s", "\n")
 			for _, in := range tx.Vin {
-				fmt.Printf("    TxID: %x, Vout: %d, ScriptSig: %s\n", in.Txid, in.Vout, in.ScriptSig)
+				fmt.Printf("    TxID: %x, Vout: %d, ScriptSig: %s%s", in.Txid, in.Vout, in.ScriptSig, "\n")
 			}
-			fmt.Printf("  -Vouts:\n")
+			fmt.Printf("  -Vouts:%s", "\n")
 			for _, out := range tx.Vout {
-				fmt.Printf("    Value: %d, ScriptPubKey: %x\n", out.Value, out.ScriptPubKey)
+				fmt.Printf("    Value: %d, ScriptPubKey: %x%s", out.Value, out.ScriptPubKey, "\n")
 			}
 		}
 		fmt.Println()
@@ -137,17 +138,18 @@ func (cli *CLI) send(from, to string, amount int) {
 		log.Panic("ERROR: Recipient address is not valid")
 	}
 
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain("") // Pass empty string as address for existing blockchain
 	defer bc.DB.Close()
 
 	utxoSet := blockchain.UTXOSet{bc}
+	utxoSet.Reindex() // Reindex UTXO set for current blockchain state
 	tx := blockchain.NewUTXOTransaction(from, to, amount, &utxoSet)
 
-	cbTx := blockchain.NewCoinbaseTX(from, "")
-	txns := []*blockchain.Transaction{cbTx, tx}
+	// cbTx := blockchain.NewCoinbaseTX(from, "") // Remove coinbase transaction from send
+	txns := []*blockchain.Transaction{tx}
 
-	bc.MineBlock(txns)
-	utxoSet.Update(bc.Iterator().Next())
+	bc.MineBlock(txns, from) // Pass 'from' as miner address
+	// utxoSet.Update(bc.Iterator().Next()) // This update is handled by Reindex now
 
 	fmt.Println("Success!")
 }

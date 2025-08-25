@@ -10,13 +10,13 @@ import (
 
 // TXOutput 结构:
 type TXOutput struct {
-	Value      int    // 金额
+	Value        int    // 金额
 	ScriptPubKey []byte // 锁定脚本，这里我们可以简化为接收方的地址
 }
 
 // IsLockedWithKey 检查输出是否可以用提供的密钥解锁
 func (out *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
-	return bytes.Compare(out.ScriptPubKey, pubKeyHash) == 0
+	return bytes.Equal(out.ScriptPubKey, pubKeyHash)
 }
 
 // TXInput 结构:
@@ -95,7 +95,9 @@ func NewCoinbaseTX(to, data string) *Transaction {
 
 	// Coinbase 交易没有输入，Txid 为空，Vout 为 -1
 	in := TXInput{[]byte{}, -1, data}
-	out := TXOutput{100, []byte(to)} // 奖励 100 个币
+	pubKeyHash := Base58Decode([]byte(to))
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+	out := TXOutput{100, pubKeyHash} // 奖励 100 个币
 
 	tx := Transaction{nil, []TXInput{in}, []TXOutput{out}}
 	tx.ID = tx.Hash()

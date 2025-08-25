@@ -9,7 +9,7 @@ import (
 )
 
 // targetBits 定义了工作量证明的难度
-const targetBits = 24
+const targetBits = 2
 
 // ProofOfWork 结构保存了指向区块的指针和证明的目标值
 type ProofOfWork struct {
