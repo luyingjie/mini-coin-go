@@ -117,7 +117,7 @@ func TestCLI_CreateBlockchain(t *testing.T) {
 	}
 
 	// 验证区块链是否创建成功
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain("")
 	defer bc.DB.Close()
 	if bc == nil {
 		t.Error("Blockchain was not created")

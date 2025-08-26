@@ -51,7 +51,11 @@ func (cli *CLI) createBlockchain(address string) {
 
 // createWallet 创建钱包
 func (cli *CLI) createWallet() {
-	wallets, _ := wallet.NewWallets()
+	wallets, err := wallet.NewWallets()
+	if err != nil {
+		fmt.Printf("Error loading wallets: %v\n", err)
+		os.Exit(1)
+	}
 	address := wallets.CreateWallet()
 	wallets.SaveToFile()
 
@@ -78,6 +82,27 @@ func (cli *CLI) getBalance(address string) {
 	}
 
 	fmt.Printf("Balance of '%s': %d\n", address, balance)
+}
+
+// debugUTXO 调试UTXO信息
+func (cli *CLI) debugUTXO(address string) {
+	if !blockchain.ValidateAddress(address) {
+		log.Panic("ERROR: Address is not valid")
+	}
+	bc := blockchain.NewBlockchain("")
+	defer bc.DB.Close()
+
+	utxoSet := blockchain.UTXOSet{bc}
+	utxoSet.Reindex()
+	pubKeyHash := blockchain.Base58Decode([]byte(address))
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+	utxos := utxoSet.FindUTXO(pubKeyHash)
+
+	fmt.Printf("=== UTXO Debug for %s ===\n", address)
+	for i, out := range utxos {
+		fmt.Printf("UTXO %d: Value=%d, ScriptPubKey=%x\n", i+1, out.Value, out.ScriptPubKey)
+	}
+	fmt.Printf("Total UTXOs: %d\n", len(utxos))
 }
 
 // listAddresses 列出所有地址
@@ -145,10 +170,11 @@ func (cli *CLI) send(from, to string, amount int) {
 	utxoSet.Reindex() // Reindex UTXO set for current blockchain state
 	tx := blockchain.NewUTXOTransaction(from, to, amount, &utxoSet)
 
-	// cbTx := blockchain.NewCoinbaseTX(from, "") // Remove coinbase transaction from send
+	// 不给发送者挖矿奖励，只是单纯的转账交易
 	txns := []*blockchain.Transaction{tx}
 
-	bc.MineBlock(txns, from) // Pass 'from' as miner address
+	// 使用一个虚拟地址作为矿工，不给实际奖励
+	bc.MineBlockWithoutReward(txns)
 	// utxoSet.Update(bc.Iterator().Next()) // This update is handled by Reindex now
 
 	fmt.Println("Success!")

@@ -27,7 +27,7 @@ func (u UTXOSet) FindSpendableOutputs(pubkeyHash []byte, amount int) (int, map[s
 
 	Work:
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			txID := hex.EncodeToString(k)
+			txID := string(k) // k已经是十六进制字符串，直接使用
 			outs := DeserializeOutputs(v)
 
 			for outIdx, out := range outs.Outputs {
@@ -98,7 +98,7 @@ func (u UTXOSet) Reindex() {
 	err = u.Blockchain.DB.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(utxoBucket))
 		for txID, outs := range utxos {
-			err := b.Put([]byte(hex.EncodeToString([]byte(txID))), outs.Serialize())
+			err := b.Put([]byte(txID), outs.Serialize()) // txID已经是十六进制字符串，直接使用
 			if err != nil {
 				log.Panic(err)
 			}
@@ -196,6 +196,42 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, minerAddress string
 	}
 }
 
+// MineBlockWithoutReward 不给矿工奖励的情况下挖矿新区块（用于纯转账交易）
+func (bc *Blockchain) MineBlockWithoutReward(transactions []*Transaction) {
+	var lastHash []byte
+
+	// 查看数据库以获取最后一个区块的哈希
+	err := bc.DB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// 不创建 Coinbase 交易，直接使用传入的交易
+	newBlock := NewBlock(transactions, lastHash)
+
+	// 将新区块存入数据库并更新 "l" 键
+	err = bc.DB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		err := b.Put(newBlock.Hash, newBlock.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+		err = b.Put([]byte("l"), newBlock.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
+		bc.tip = newBlock.Hash
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
 // NewBlockchain 创建一���新的区块链数据库，如果不存在的话
 func NewBlockchain(address string) *Blockchain {
 	var tip []byte
@@ -248,36 +284,52 @@ func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 
 	bci := bc.Iterator()
 
+	// 第一遍：收集所有已花费的输出
 	for {
 		block := bci.Next()
 
 		for _, tx := range block.Transactions {
 			if tx.IsCoinbase() == false {
 				for _, in := range tx.Vin {
-					inTxID := string(in.Txid)
+					inTxID := hex.EncodeToString(in.Txid)
 					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
 				}
 			}
+		}
 
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
+	}
+
+	// 重新创建迭代器进行第二遍
+	bci = bc.Iterator()
+
+	// 第二遍：收集未花费的输出
+	for {
+		block := bci.Next()
+
+		for _, tx := range block.Transactions {
 			outs := TXOutputs{}
+			txIDHex := hex.EncodeToString(tx.ID)
 			for outIdx, out := range tx.Vout {
-				if spentTXOs[string(tx.ID)] != nil {
-					isSpent := false
-					for _, spentOutIdx := range spentTXOs[string(tx.ID)] {
+				// 检查这个输出是否被花费了
+				isSpent := false
+				if spentOuts, ok := spentTXOs[txIDHex]; ok {
+					for _, spentOutIdx := range spentOuts {
 						if spentOutIdx == outIdx {
 							isSpent = true
 							break
 						}
 					}
-					if isSpent == false {
-						outs.Outputs = append(outs.Outputs, out)
-					}
-				} else {
-					outs.Outputs = append(outs.Outputs, out)
+				}
 
+				// 如果没有被花费，就是 UTXO
+				if !isSpent {
+					outs.Outputs = append(outs.Outputs, out)
 				}
 			}
-			utxo[string(tx.ID)] = outs
+			utxo[txIDHex] = outs // 使用十六进制格式作为key，与Reindex保持一致
 		}
 
 		if len(block.PrevBlockHash) == 0 {
