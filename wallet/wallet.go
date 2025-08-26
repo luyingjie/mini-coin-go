@@ -1,13 +1,13 @@
 package wallet
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"log"
-	"math/big"
+
+	"mini-coin-go/blockchain"
 
 	"golang.org/x/crypto/ripemd160"
 )
@@ -52,7 +52,7 @@ func (w Wallet) GetAddress() []byte {
 	checksum := checksum(versionedPayload)
 
 	fullPayload := append(versionedPayload, checksum...)
-	address := Base58Encode(fullPayload)
+	address := blockchain.Base58Encode(fullPayload)
 
 	return address
 }
@@ -77,66 +77,4 @@ func checksum(payload []byte) []byte {
 	secondSHA := sha256.Sum256(firstSHA[:])
 
 	return secondSHA[:addressChecksumLen]
-}
-
-// Base58Encode 将字节数组编码为 Base58 格式
-func Base58Encode(input []byte) []byte {
-	var result []byte
-
-	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	base := len(alphabet)
-
-	zeros := 0
-	for _, b := range input {
-		if b == 0 {
-			zeros++
-		} else {
-			break
-		}
-	}
-
-	num := big.NewInt(0)
-	num.SetBytes(input)
-
-	for num.Cmp(big.NewInt(0)) > 0 {
-		mod := big.NewInt(0)
-		num.DivMod(num, big.NewInt(int64(base)), mod)
-		result = append([]byte{alphabet[mod.Int64()]}, result...)
-	}
-
-	for i := 0; i < zeros; i++ {
-		result = append([]byte{alphabet[0]}, result...)
-	}
-
-	return result
-}
-
-// Base58Decode 解码 Base58 编码的字符串
-func Base58Decode(input []byte) []byte {
-	result := big.NewInt(0)
-
-	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	base := len(alphabet)
-
-	zeros := 0
-	for _, b := range input {
-		if b == alphabet[0] {
-			zeros++
-		} else {
-			break
-		}
-	}
-
-	payload := input[zeros:]
-	for _, b := range payload {
-		charIndex := bytes.IndexByte([]byte(alphabet), b)
-		result.Mul(result, big.NewInt(int64(base)))
-		result.Add(result, big.NewInt(int64(charIndex)))
-	}
-
-	decoded := result.Bytes()
-	decodedWithZeros := make([]byte, zeros+len(decoded))
-	copy(decodedWithZeros[zeros:], decoded)
-
-	return decodedWithZeros
 }
