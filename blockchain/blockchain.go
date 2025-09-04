@@ -161,7 +161,7 @@ type Blockchain struct {
 func (bc *Blockchain) MineBlock(transactions []*Transaction, minerAddress string) {
 	var lastHash []byte
 
-	// 查看数据库以获取最后一个区块的哈希
+	// 查看数据���以获取最后一个区块的哈希
 	err := bc.DB.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
@@ -232,7 +232,50 @@ func (bc *Blockchain) MineBlockWithoutReward(transactions []*Transaction) {
 	}
 }
 
-// NewBlockchain 创建一���新的区块链数据库，如果不存在的话
+// 这个方法将会替代 MineBlock 和 MineBlockWithoutReward 方法。
+// MineBlockUnified 将新区块保存到数据库中
+// 如果 minerAddress 不为空, 则会创建一笔 Coinbase 交易作为矿工奖励
+func (bc *Blockchain) MineBlockUnified(transactions []*Transaction, minerAddress string) {
+	var lastHash []byte
+
+	// 查看数据库以获取最后一个区块的哈希
+	err := bc.DB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// 如果提供了矿工地址，则创建并添加 Coinbase 交易
+	if minerAddress != "" {
+		cbtx := NewCoinbaseTX(minerAddress, "")
+		transactions = append([]*Transaction{cbtx}, transactions...)
+	}
+
+	newBlock := NewBlock(transactions, lastHash)
+
+	// 将新区块存入数据库并更新 "l" 键
+	err = bc.DB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		err := b.Put(newBlock.Hash, newBlock.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+		err = b.Put([]byte("l"), newBlock.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
+		bc.tip = newBlock.Hash
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+// NewBlockchain 创建一个新的区块链数据库，如果不存在的话
 func NewBlockchain(address string) *Blockchain {
 	var tip []byte
 	db, err := bbolt.Open(dbFile, 0600, nil)
@@ -278,6 +321,7 @@ func NewBlockchain(address string) *Blockchain {
 	return &bc
 }
 
+// FindUTXO 检索未使用的交易输出
 func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 	utxo := make(map[string]TXOutputs)
 	spentTXOs := make(map[string][]int)
