@@ -14,6 +14,7 @@ type Block struct {
 	PrevBlockHash []byte         // 前一个区块的哈希值
 	Hash          []byte         // 当前区块的哈希值
 	Nonce         int            // 工作量证明的计数器
+	Height        int            // 区块高度
 }
 
 // Serialize 将区块序列化为一个字节切片
@@ -55,13 +56,14 @@ func (b *Block) HashTransactions() []byte {
 }
 
 // NewBlock 创建并返回一个新区块
-func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int) *Block {
 	block := &Block{
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transactions,
 		PrevBlockHash: prevBlockHash,
 		Hash:          []byte{},
 		Nonce:         0,
+		Height:        height,
 	}
 	pow := NewProofOfWork(block)
 	nonce, hash := pow.Run() // 通过挖矿得到 nonce 和 hash
@@ -73,6 +75,6 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 }
 
 // NewGenesisBlock 创建并返回创世区块
-func NewGenesisBlock() *Block {
-	return NewBlock([]*Transaction{NewCoinbaseTX("Genesis Block Reward", "")}, []byte{})
+func NewGenesisBlock(coinbaseTx *Transaction) *Block {
+	return NewBlock([]*Transaction{coinbaseTx}, []byte{}, 0)
 }

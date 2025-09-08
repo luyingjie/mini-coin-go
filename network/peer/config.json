@@ -1,0 +1,12 @@
+{
+  "seed_nodes": [
+    "localhost:3000",
+    "127.0.0.1:3001",
+    "127.0.0.1:3002"
+  ],
+  "max_peers": 50,
+  "heartbeat_interval": 30,
+  "cleanup_interval": 300,
+  "connection_timeout": 10,
+  "ping_timeout": 5
+}

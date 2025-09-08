@@ -2,36 +2,31 @@ package wallet
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
-
-	"crypto/elliptic"
 )
 
-const walletFile = "wallet.dat"
-
-// Wallets 存储钱包的集合
+// Wallets stores a collection of wallets
 type Wallets struct {
 	Wallets map[string]*Wallet
 }
 
-// NewWallets 创建 Wallets 并从文件中加载（如果文件存在）
-func NewWallets() (*Wallets, error) {
+// NewWallets creates Wallets and fills it from a file if it exists
+func NewWallets(nodeID string) (*Wallets, error) {
+	gob.Register(elliptic.P256())
 	wallets := Wallets{}
 	wallets.Wallets = make(map[string]*Wallet)
 
-	err := wallets.LoadFromFile()
-	if os.IsNotExist(err) {
-		return &wallets, nil
-	}
+	err := wallets.LoadFromFile(nodeID)
 
 	return &wallets, err
 }
 
-// CreateWallet 向 Wallets 中添加一个钱包
+// CreateWallet adds a Wallet to Wallets
 func (ws *Wallets) CreateWallet() string {
 	wallet := NewWallet()
 	address := fmt.Sprintf("%s", wallet.GetAddress())
@@ -41,7 +36,7 @@ func (ws *Wallets) CreateWallet() string {
 	return address
 }
 
-// GetAddresses 返回存储在钱包文件中的所有地址数组
+// GetAddresses returns an array of addresses stored in the wallet file
 func (ws *Wallets) GetAddresses() []string {
 	var addresses []string
 
@@ -52,17 +47,14 @@ func (ws *Wallets) GetAddresses() []string {
 	return addresses
 }
 
-// GetWallet 根据地址返回一个钱包
+// GetWallet returns a Wallet by its address
 func (ws Wallets) GetWallet(address string) Wallet {
 	return *ws.Wallets[address]
 }
 
-// LoadFromFile 从文件中加载钱包
-func init() {
-	gob.Register(elliptic.P256())
-}
-
-func (ws *Wallets) LoadFromFile() error {
+// LoadFromFile loads wallets from the file
+func (ws *Wallets) LoadFromFile(nodeID string) error {
+	walletFile := fmt.Sprintf("wallet_%s.dat", nodeID)
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return err
 	}
@@ -84,9 +76,11 @@ func (ws *Wallets) LoadFromFile() error {
 	return nil
 }
 
-// SaveToFile 将钱包保存到文件
-func (ws Wallets) SaveToFile() {
+// SaveToFile saves wallets to a file
+func (ws Wallets) SaveToFile(nodeID string) {
 	var content bytes.Buffer
+	walletFile := fmt.Sprintf("wallet_%s.dat", nodeID)
+
 	encoder := gob.NewEncoder(&content)
 	err := encoder.Encode(ws)
 	if err != nil {

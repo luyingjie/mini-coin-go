@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
@@ -88,6 +89,17 @@ func (tx *Transaction) IsCoinbase() bool {
 	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
+// NewTXOutput 创建新的交易输出
+func NewTXOutput(value int, address string) *TXOutput {
+	pubKeyHash := Base58Decode([]byte(address))
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+	
+	return &TXOutput{
+		Value:        value,
+		ScriptPubKey: pubKeyHash,
+	}
+}
+
 // NewCoinbaseTX 创建并返回一个 Coinbase 交易
 func NewCoinbaseTX(to, data string) *Transaction {
 	if data == "" {
@@ -104,4 +116,43 @@ func NewCoinbaseTX(to, data string) *Transaction {
 	tx.ID = tx.Hash()
 
 	return &tx
+}
+
+// Serialize 序列化交易
+func (tx *Transaction) Serialize() []byte {
+	var res bytes.Buffer
+	encoder := gob.NewEncoder(&res)
+
+	err := encoder.Encode(tx)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return res.Bytes()
+}
+
+// DeserializeTransaction 反序列化交易
+func DeserializeTransaction(data []byte) *Transaction {
+	var transaction Transaction
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	err := decoder.Decode(&transaction)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return &transaction
+}
+
+// Sign 签名交易（简化版本）
+func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transaction) {
+	// 这是一个简化的签名实现
+	// 在实际应用中，应该使用ECDSA等加密算法进行签名
+}
+
+// Verify 验证交易（简化版本）
+func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
+	// 这是一个简化的验证实现
+	// 在实际应用中，应该验证数字签名
+	return true
 }
