@@ -5,14 +5,35 @@ import (
 	"testing"
 )
 
+const (
+	testNodeID = "test_node"
+)
+
+// setupTestEnvironment 设置测试环境
+func setupTestEnvironment() {
+	if _, err := os.Stat("wallet_test_node.dat"); err == nil {
+		os.Rename("wallet_test_node.dat", "wallet_test_node.dat.bak")
+	}
+}
+
+// teardownTestEnvironment 清理测试环境
+func teardownTestEnvironment() {
+	os.Remove("wallet_test_node.dat")
+
+	if _, err := os.Stat("wallet_test_node.dat.bak"); err == nil {
+		os.Rename("wallet_test_node.dat.bak", "wallet_test_node.dat")
+	}
+}
+
 // TestNewWallets 测试创建钱包集合
 func TestNewWallets(t *testing.T) {
 	setupTestEnvironment()
 	defer teardownTestEnvironment()
 
-	wallets, err := NewWallets()
-	if err != nil {
-		t.Errorf("Failed to create wallets: %v", err)
+	wallets, err := NewWallets(testNodeID)
+	// 当文件不存在时，应该返回错误，但钱包集合仍然应该被创建
+	if err == nil {
+		t.Error("Expected error when wallet file does not exist")
 	}
 
 	if wallets == nil {
@@ -22,6 +43,11 @@ func TestNewWallets(t *testing.T) {
 	if wallets.Wallets == nil {
 		t.Error("Wallets map should not be nil")
 	}
+
+	// 初始情况下应该没有钱包
+	if len(wallets.Wallets) != 0 {
+		t.Errorf("Expected 0 wallets, got %d", len(wallets.Wallets))
+	}
 }
 
 // TestWallets_CreateWallet 测试创建钱包
@@ -29,7 +55,7 @@ func TestWallets_CreateWallet(t *testing.T) {
 	setupTestEnvironment()
 	defer teardownTestEnvironment()
 
-	wallets, _ := NewWallets()
+	wallets, _ := NewWallets(testNodeID)
 
 	address := wallets.CreateWallet()
 
@@ -58,7 +84,7 @@ func TestWallets_GetAddresses(t *testing.T) {
 	setupTestEnvironment()
 	defer teardownTestEnvironment()
 
-	wallets, _ := NewWallets()
+	wallets, _ := NewWallets(testNodeID)
 
 	// 初始应该没有地址
 	addresses := wallets.GetAddresses()
@@ -96,7 +122,7 @@ func TestWallets_GetWallet(t *testing.T) {
 	setupTestEnvironment()
 	defer teardownTestEnvironment()
 
-	wallets, _ := NewWallets()
+	wallets, _ := NewWallets(testNodeID)
 	address := wallets.CreateWallet()
 
 	wallet := wallets.GetWallet(address)
@@ -122,19 +148,19 @@ func TestWallets_SaveToFile_LoadFromFile(t *testing.T) {
 	defer teardownTestEnvironment()
 
 	// 创建钱包并保存
-	wallets1, _ := NewWallets()
+	wallets1, _ := NewWallets(testNodeID)
 	addr1 := wallets1.CreateWallet()
 	addr2 := wallets1.CreateWallet()
 
-	wallets1.SaveToFile()
+	wallets1.SaveToFile(testNodeID)
 
 	// 验证文件是否存在
-	if _, err := os.Stat("wallet.dat"); os.IsNotExist(err) {
+	if _, err := os.Stat("wallet_test_node.dat"); os.IsNotExist(err) {
 		t.Error("Wallet file should exist after saving")
 	}
 
 	// 创建新的钱包集合并从文件加载
-	wallets2, err := NewWallets()
+	wallets2, err := NewWallets(testNodeID)
 	if err != nil {
 		t.Errorf("Failed to load wallets from file: %v", err)
 	}

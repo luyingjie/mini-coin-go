@@ -2,7 +2,6 @@ package security
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -46,7 +45,7 @@ func NewBlacklistFilter() *BlacklistFilter {
 func (bf *BlacklistFilter) ShouldAllow(ctx context.Context, addr string, messageType string) bool {
 	bf.mutex.RLock()
 	defer bf.mutex.RUnlock()
-	
+
 	ip := extractIP(addr)
 	if banTime, exists := bf.blacklist[ip]; exists {
 		// 检查封禁是否已过期
@@ -57,7 +56,7 @@ func (bf *BlacklistFilter) ShouldAllow(ctx context.Context, addr string, message
 		// 封禁已过期，移除
 		delete(bf.blacklist, ip)
 	}
-	
+
 	return true
 }
 
@@ -75,7 +74,7 @@ func (bf *BlacklistFilter) GetName() string {
 func (bf *BlacklistFilter) AddToBlacklist(ip string, duration time.Duration) {
 	bf.mutex.Lock()
 	defer bf.mutex.Unlock()
-	
+
 	bf.blacklist[ip] = time.Now().Add(duration)
 	log.Printf("添加IP到黑名单: %s，持续时间: %v", ip, duration)
 }
@@ -84,7 +83,7 @@ func (bf *BlacklistFilter) AddToBlacklist(ip string, duration time.Duration) {
 func (bf *BlacklistFilter) RemoveFromBlacklist(ip string) {
 	bf.mutex.Lock()
 	defer bf.mutex.Unlock()
-	
+
 	delete(bf.blacklist, ip)
 	log.Printf("从黑名单移除IP: %s", ip)
 }
@@ -93,7 +92,7 @@ func (bf *BlacklistFilter) RemoveFromBlacklist(ip string) {
 func (bf *BlacklistFilter) GetBlacklistIPs() []string {
 	bf.mutex.RLock()
 	defer bf.mutex.RUnlock()
-	
+
 	var ips []string
 	for ip, banTime := range bf.blacklist {
 		if time.Now().Before(banTime) {
@@ -125,15 +124,15 @@ func (wf *WhitelistFilter) ShouldAllow(ctx context.Context, addr string, message
 	if !wf.enabled {
 		return true // 白名单未启用，允许所有
 	}
-	
+
 	wf.mutex.RLock()
 	defer wf.mutex.RUnlock()
-	
+
 	ip := extractIP(addr)
 	if allowed, exists := wf.whitelist[ip]; exists && allowed {
 		return true
 	}
-	
+
 	log.Printf("阻止非白名单IP: %s", ip)
 	return false
 }
@@ -166,7 +165,7 @@ func (wf *WhitelistFilter) Disable() {
 func (wf *WhitelistFilter) AddToWhitelist(ip string) {
 	wf.mutex.Lock()
 	defer wf.mutex.Unlock()
-	
+
 	wf.whitelist[ip] = true
 	log.Printf("添加IP到白名单: %s", ip)
 }
@@ -175,18 +174,18 @@ func (wf *WhitelistFilter) AddToWhitelist(ip string) {
 func (wf *WhitelistFilter) RemoveFromWhitelist(ip string) {
 	wf.mutex.Lock()
 	defer wf.mutex.Unlock()
-	
+
 	delete(wf.whitelist, ip)
 	log.Printf("从白名单移除IP: %s", ip)
 }
 
 // RateLimitFilter 速率限制过滤器
 type RateLimitFilter struct {
-	name         string
-	requests     map[string][]time.Time // IP -> 请求时间列表
-	maxRequests  int                    // 最大请求数
-	timeWindow   time.Duration          // 时间窗口
-	mutex        sync.RWMutex
+	name        string
+	requests    map[string][]time.Time // IP -> 请求时间列表
+	maxRequests int                    // 最大请求数
+	timeWindow  time.Duration          // 时间窗口
+	mutex       sync.RWMutex
 }
 
 // NewRateLimitFilter 创建速率限制过滤器
@@ -203,16 +202,16 @@ func NewRateLimitFilter(maxRequests int, timeWindow time.Duration) *RateLimitFil
 func (rlf *RateLimitFilter) ShouldAllow(ctx context.Context, addr string, messageType string) bool {
 	rlf.mutex.Lock()
 	defer rlf.mutex.Unlock()
-	
+
 	ip := extractIP(addr)
 	now := time.Now()
-	
+
 	// 获取该IP的请求历史
 	requests, exists := rlf.requests[ip]
 	if !exists {
 		requests = make([]time.Time, 0)
 	}
-	
+
 	// 清理过期的请求记录
 	var validRequests []time.Time
 	cutoff := now.Add(-rlf.timeWindow)
@@ -221,17 +220,17 @@ func (rlf *RateLimitFilter) ShouldAllow(ctx context.Context, addr string, messag
 			validRequests = append(validRequests, reqTime)
 		}
 	}
-	
+
 	// 检查是否超过限制
 	if len(validRequests) >= rlf.maxRequests {
 		log.Printf("速率限制阻止IP: %s，请求数: %d/%d", ip, len(validRequests), rlf.maxRequests)
 		return false
 	}
-	
+
 	// 添加当前请求
 	validRequests = append(validRequests, now)
 	rlf.requests[ip] = validRequests
-	
+
 	return true
 }
 
@@ -249,10 +248,10 @@ func (rlf *RateLimitFilter) GetName() string {
 func (rlf *RateLimitFilter) GetRequestStats() map[string]int {
 	rlf.mutex.RLock()
 	defer rlf.mutex.RUnlock()
-	
+
 	stats := make(map[string]int)
 	cutoff := time.Now().Add(-rlf.timeWindow)
-	
+
 	for ip, requests := range rlf.requests {
 		validCount := 0
 		for _, reqTime := range requests {
@@ -262,19 +261,19 @@ func (rlf *RateLimitFilter) GetRequestStats() map[string]int {
 		}
 		stats[ip] = validCount
 	}
-	
+
 	return stats
 }
 
 // DDoSFilter DDoS防护过滤器
 type DDoSFilter struct {
-	name           string
+	name            string
 	connectionCount map[string]int       // IP -> 连接数
-	lastRequest    map[string]time.Time // IP -> 最后请求时间
-	maxConnections int                  // 最大连接数
-	suspiciousIPs  map[string]time.Time // 可疑IP -> 检测时间
-	mutex          sync.RWMutex
-	blacklistFilter *BlacklistFilter    // 黑名单过滤器引用
+	lastRequest     map[string]time.Time // IP -> 最后请求时间
+	maxConnections  int                  // 最大连接数
+	suspiciousIPs   map[string]time.Time // 可疑IP -> 检测时间
+	mutex           sync.RWMutex
+	blacklistFilter *BlacklistFilter // 黑名单过滤器引用
 }
 
 // NewDDoSFilter 创建DDoS防护过滤器
@@ -293,29 +292,29 @@ func NewDDoSFilter(maxConnections int, blacklistFilter *BlacklistFilter) *DDoSFi
 func (df *DDoSFilter) ShouldAllow(ctx context.Context, addr string, messageType string) bool {
 	df.mutex.Lock()
 	defer df.mutex.Unlock()
-	
+
 	ip := extractIP(addr)
 	now := time.Now()
-	
+
 	// 更新连接统计
 	df.connectionCount[ip]++
 	df.lastRequest[ip] = now
-	
+
 	// 检查连接数是否超过限制
 	if df.connectionCount[ip] > df.maxConnections {
 		log.Printf("DDoS检测到可疑IP: %s，连接数: %d", ip, df.connectionCount[ip])
-		
+
 		// 标记为可疑IP
 		df.suspiciousIPs[ip] = now
-		
+
 		// 如果连接数严重超标，添加到黑名单
 		if df.connectionCount[ip] > df.maxConnections*2 && df.blacklistFilter != nil {
 			df.blacklistFilter.AddToBlacklist(ip, 10*time.Minute)
 		}
-		
+
 		return false
 	}
-	
+
 	return true
 }
 
@@ -333,17 +332,17 @@ func (df *DDoSFilter) GetName() string {
 func (df *DDoSFilter) CleanupConnections() {
 	df.mutex.Lock()
 	defer df.mutex.Unlock()
-	
+
 	now := time.Now()
 	timeout := 5 * time.Minute
-	
+
 	for ip, lastTime := range df.lastRequest {
 		if now.Sub(lastTime) > timeout {
 			delete(df.connectionCount, ip)
 			delete(df.lastRequest, ip)
 		}
 	}
-	
+
 	// 清理过期的可疑IP
 	for ip, detectTime := range df.suspiciousIPs {
 		if now.Sub(detectTime) > time.Hour {
@@ -352,11 +351,34 @@ func (df *DDoSFilter) CleanupConnections() {
 	}
 }
 
+// IsAllowed 检查是否允许请求（为了兼容性）
+func (df *DDoSFilter) IsAllowed(addr string) bool {
+	return df.ShouldAllow(context.Background(), addr, "")
+}
+
+// GetStats 获取统计信息
+func (df *DDoSFilter) GetStats() map[string]interface{} {
+	df.mutex.RLock()
+	defer df.mutex.RUnlock()
+
+	totalConnections := 0
+	for _, count := range df.connectionCount {
+		totalConnections += count
+	}
+
+	return map[string]interface{}{
+		"total_connections": totalConnections,
+		"unique_ips":        len(df.connectionCount),
+		"suspicious_ips":    len(df.suspiciousIPs),
+		"max_connections":   df.maxConnections,
+	}
+}
+
 // GetSuspiciousIPs 获取可疑IP列表
 func (df *DDoSFilter) GetSuspiciousIPs() []string {
 	df.mutex.RLock()
 	defer df.mutex.RUnlock()
-	
+
 	var ips []string
 	for ip := range df.suspiciousIPs {
 		ips = append(ips, ip)
@@ -403,7 +425,7 @@ func NewMessageFilterManager() *MessageFilterManager {
 func (mfm *MessageFilterManager) AddFilter(filter Filter) {
 	mfm.mutex.Lock()
 	defer mfm.mutex.Unlock()
-	
+
 	mfm.filters = append(mfm.filters, filter)
 	log.Printf("添加消息过滤器: %s", filter.GetName())
 }
@@ -412,7 +434,7 @@ func (mfm *MessageFilterManager) AddFilter(filter Filter) {
 func (mfm *MessageFilterManager) RemoveFilter(filterType FilterType) {
 	mfm.mutex.Lock()
 	defer mfm.mutex.Unlock()
-	
+
 	for i, filter := range mfm.filters {
 		if filter.GetFilterType() == filterType {
 			mfm.filters = append(mfm.filters[:i], mfm.filters[i+1:]...)
@@ -428,28 +450,28 @@ func (mfm *MessageFilterManager) ShouldAllow(ctx context.Context, addr string, m
 	filters := make([]Filter, len(mfm.filters))
 	copy(filters, mfm.filters)
 	mfm.mutex.RUnlock()
-	
+
 	mfm.stats.mutex.Lock()
 	mfm.stats.TotalRequests++
 	mfm.stats.mutex.Unlock()
-	
+
 	// 逐个检查过滤器
 	for _, filter := range filters {
 		if !filter.ShouldAllow(ctx, addr, messageType) {
 			mfm.stats.mutex.Lock()
 			mfm.stats.BlockedRequests++
 			mfm.stats.mutex.Unlock()
-			
-			log.Printf("消息被过滤器阻止: %s，来源: %s，类型: %s", 
+
+			log.Printf("消息被过滤器阻止: %s，来源: %s，类型: %s",
 				filter.GetName(), addr, messageType)
 			return false
 		}
 	}
-	
+
 	mfm.stats.mutex.Lock()
 	mfm.stats.AllowedRequests++
 	mfm.stats.mutex.Unlock()
-	
+
 	return true
 }
 
@@ -457,7 +479,7 @@ func (mfm *MessageFilterManager) ShouldAllow(ctx context.Context, addr string, m
 func (mfm *MessageFilterManager) GetStats() *FilterStats {
 	mfm.stats.mutex.RLock()
 	defer mfm.stats.mutex.RUnlock()
-	
+
 	return &FilterStats{
 		TotalRequests:   mfm.stats.TotalRequests,
 		BlockedRequests: mfm.stats.BlockedRequests,
@@ -469,18 +491,18 @@ func (mfm *MessageFilterManager) GetStats() *FilterStats {
 func (mfm *MessageFilterManager) GetFilterInfo() map[string]interface{} {
 	mfm.mutex.RLock()
 	defer mfm.mutex.RUnlock()
-	
+
 	var filterNames []string
 	for _, filter := range mfm.filters {
 		filterNames = append(filterNames, filter.GetName())
 	}
-	
+
 	stats := mfm.GetStats()
 	blockRate := float64(0)
 	if stats.TotalRequests > 0 {
 		blockRate = float64(stats.BlockedRequests) / float64(stats.TotalRequests) * 100
 	}
-	
+
 	return map[string]interface{}{
 		"filter_count":     len(mfm.filters),
 		"filter_names":     filterNames,

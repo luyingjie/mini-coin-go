@@ -17,28 +17,42 @@ const (
 	testWalletFile   = "wallet.dat"
 	backupDBFile     = "blockchain.db.bak"
 	backupWalletFile = "wallet.dat.bak"
+	testNodeID       = "test_node"
 )
 
 // setupTestEnvironment 设置测试环境，备份现有数据文件
 func setupTestEnvironment() {
-	if _, err := os.Stat(testDBFile); err == nil {
-		os.Rename(testDBFile, backupDBFile)
+	// 设置测试环境变量
+	os.Setenv("NODE_ID", testNodeID)
+
+	if _, err := os.Stat("blockchain_test_node.db"); err == nil {
+		os.Rename("blockchain_test_node.db", "blockchain_test_node.db.bak")
 	}
-	if _, err := os.Stat(testWalletFile); err == nil {
-		os.Rename(testWalletFile, backupWalletFile)
+	if _, err := os.Stat("wallet_test_node.dat"); err == nil {
+		os.Rename("wallet_test_node.dat", "wallet_test_node.dat.bak")
+	}
+	if _, err := os.Stat("chainstate_test_node.db"); err == nil {
+		os.Rename("chainstate_test_node.db", "chainstate_test_node.db.bak")
 	}
 }
 
 // teardownTestEnvironment 清理测试环境，恢复数据文件
 func teardownTestEnvironment() {
-	os.Remove(testDBFile)
-	os.Remove(testWalletFile)
+	// 清理环境变量
+	os.Unsetenv("NODE_ID")
 
-	if _, err := os.Stat(backupDBFile); err == nil {
-		os.Rename(backupDBFile, testDBFile)
+	os.Remove("blockchain_test_node.db")
+	os.Remove("wallet_test_node.dat")
+	os.Remove("chainstate_test_node.db")
+
+	if _, err := os.Stat("blockchain_test_node.db.bak"); err == nil {
+		os.Rename("blockchain_test_node.db.bak", "blockchain_test_node.db")
 	}
-	if _, err := os.Stat(backupWalletFile); err == nil {
-		os.Rename(backupWalletFile, testWalletFile)
+	if _, err := os.Stat("wallet_test_node.dat.bak"); err == nil {
+		os.Rename("wallet_test_node.dat.bak", "wallet_test_node.dat")
+	}
+	if _, err := os.Stat("chainstate_test_node.db.bak"); err == nil {
+		os.Rename("chainstate_test_node.db.bak", "chainstate_test_node.db")
 	}
 }
 
@@ -80,7 +94,7 @@ func TestCLI_CreateWallet(t *testing.T) {
 		t.Errorf("Expected 'Your new address:' in output, got: %s", output)
 	}
 
-	wallets, err := wallet.NewWallets()
+	wallets, err := wallet.NewWallets(testNodeID)
 	if err != nil {
 		t.Fatalf("Failed to load wallets: %v", err)
 	}
@@ -104,7 +118,7 @@ func TestCLI_CreateBlockchain(t *testing.T) {
 		cli.Run()
 	})
 
-	wallets, _ := wallet.NewWallets()
+	wallets, _ := wallet.NewWallets(testNodeID)
 	address := wallets.GetAddresses()[0]
 
 	os.Args = []string{"main", "createblockchain", "-address", address}
@@ -117,7 +131,7 @@ func TestCLI_CreateBlockchain(t *testing.T) {
 	}
 
 	// 验证区块链是否创建成功
-	bc := blockchain.NewBlockchain("")
+	bc := blockchain.NewBlockchain("", testNodeID)
 	defer bc.DB.Close()
 	if bc == nil {
 		t.Error("Blockchain was not created")
@@ -136,7 +150,7 @@ func TestCLI_GetBalance(t *testing.T) {
 	os.Args = []string{"main", "createwallet"}
 	cli := CLI{}
 	captureOutput(func() { cli.Run() })
-	wallets, _ := wallet.NewWallets()
+	wallets, _ := wallet.NewWallets(testNodeID)
 	address := wallets.GetAddresses()[0]
 
 	os.Args = []string{"main", "createblockchain", "-address", address}
@@ -147,8 +161,8 @@ func TestCLI_GetBalance(t *testing.T) {
 		cli.Run()
 	})
 
-	if !strings.Contains(output, "Balance of") || !strings.Contains(output, "10") { // 假设创世区块奖励为10
-		t.Errorf("Expected balance of 10 for address %s, got: %s", address, output)
+	if !strings.Contains(output, "Balance of") || !strings.Contains(output, "100") { // 创世区块奖励为100
+		t.Errorf("Expected balance of 100 for address %s, got: %s", address, output)
 	}
 }
 
@@ -167,7 +181,7 @@ func TestCLI_Send(t *testing.T) {
 	os.Args = []string{"main", "createwallet"}
 	captureOutput(func() { cli.Run() }) // Wallet 2
 
-	wallets, _ := wallet.NewWallets()
+	wallets, _ := wallet.NewWallets(testNodeID)
 	addresses := wallets.GetAddresses()
 	fromAddress := addresses[0]
 	toAddress := addresses[1]
@@ -175,8 +189,8 @@ func TestCLI_Send(t *testing.T) {
 	os.Args = []string{"main", "createblockchain", "-address", fromAddress}
 	captureOutput(func() { cli.Run() })
 
-	// 发送交易
-	os.Args = []string{"main", "send", "-from", fromAddress, "-to", toAddress, "-amount", "5"}
+	// 发送交易（不立即挖矿）
+	os.Args = []string{"main", "send", "-from", fromAddress, "-to", toAddress, "-amount", "5", "-mine"}
 	output := captureOutput(func() {
 		cli.Run()
 	})
@@ -185,11 +199,11 @@ func TestCLI_Send(t *testing.T) {
 		t.Errorf("Expected 'Success!' in output, got: %s", output)
 	}
 
-	// 验证余额
+	// 验证余额（由于挖矿添加了新的coinbase交易，发送方余额会增加）
 	os.Args = []string{"main", "getbalance", "-address", fromAddress}
 	outputFrom := captureOutput(func() { cli.Run() })
-	if !strings.Contains(outputFrom, "Balance of") || !strings.Contains(outputFrom, "5") { // 假设创世区块奖励为10，发送5后剩余5
-		t.Errorf("Expected balance of 5 for fromAddress %s, got: %s", fromAddress, outputFrom)
+	if !strings.Contains(outputFrom, "Balance of") || !strings.Contains(outputFrom, "195") { // 100(原始) - 5(发送) + 100(挖矿奖励) = 195
+		t.Errorf("Expected balance of 195 for fromAddress %s, got: %s", fromAddress, outputFrom)
 	}
 
 	os.Args = []string{"main", "getbalance", "-address", toAddress}
@@ -214,7 +228,7 @@ func TestCLI_ListAddresses(t *testing.T) {
 	os.Args = []string{"main", "createwallet"}
 	captureOutput(func() { cli.Run() })
 
-	wallets, _ := wallet.NewWallets()
+	wallets, _ := wallet.NewWallets(testNodeID)
 	expectedAddresses := wallets.GetAddresses()
 
 	os.Args = []string{"main", "listaddresses"}
@@ -241,7 +255,7 @@ func TestCLI_PrintChain(t *testing.T) {
 	os.Args = []string{"main", "createwallet"}
 	cli := CLI{}
 	captureOutput(func() { cli.Run() })
-	wallets, _ := wallet.NewWallets()
+	wallets, _ := wallet.NewWallets(testNodeID)
 	address := wallets.GetAddresses()[0]
 
 	os.Args = []string{"main", "createblockchain", "-address", address}
@@ -252,7 +266,7 @@ func TestCLI_PrintChain(t *testing.T) {
 		cli.Run()
 	})
 
-	if !strings.Contains(output, "============ Block") || !strings.Contains(output, "Prev. hash:") {
+	if !strings.Contains(output, "============ Block") || !strings.Contains(output, "Prev. block:") {
 		t.Errorf("Expected blockchain output, got: %s", output)
 	}
 }

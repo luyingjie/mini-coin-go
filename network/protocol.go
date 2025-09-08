@@ -8,7 +8,7 @@ import (
 )
 
 // commandLength 命令的长度
-// const commandLength = 12
+const commandLength = 12
 
 // CommandToBytes 将命令转换为字节数组
 func CommandToBytes(command string) []byte {

@@ -37,20 +37,20 @@ func (s PeerStatus) String() string {
 
 // Peer 表示网络中的一个节点
 type Peer struct {
-	ID              string        // 节点唯一标识
-	Address         string        // 节点地址
-	Port            int           // 节点端口
-	Status          PeerStatus    // 节点状态
-	LastSeen        time.Time     // 最后活跃时间
-	ConnectedAt     time.Time     // 连接建立时间
-	Score           int           // 节点评分
-	FailedAttempts  int           // 连续失败次数
-	Version         int           // 协议版本
-	BestHeight      int           // 最佳区块高度
-	Services        uint64        // 支持的服务
-	UserAgent       string        // 用户代理信息
-	PingTime        time.Duration // 延迟时间
-	mutex           sync.RWMutex  // 读写锁
+	ID             string        // 节点唯一标识
+	Address        string        // 节点地址
+	Port           int           // 节点端口
+	Status         PeerStatus    // 节点状态
+	LastSeen       time.Time     // 最后活跃时间
+	ConnectedAt    time.Time     // 连接建立时间
+	Score          int           // 节点评分
+	FailedAttempts int           // 连续失败次数
+	Version        int           // 协议版本
+	BestHeight     int           // 最佳区块高度
+	Services       uint64        // 支持的服务
+	UserAgent      string        // 用户代理信息
+	PingTime       time.Duration // 延迟时间
+	mutex          sync.RWMutex  // 读写锁
 }
 
 // NewPeer 创建新的节点实例
@@ -87,11 +87,11 @@ func (p *Peer) GetFullAddress() string {
 func (p *Peer) UpdateStatus(status PeerStatus) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	
+
 	oldStatus := p.Status
 	p.Status = status
 	p.LastSeen = time.Now()
-	
+
 	if status == StatusConnected {
 		p.ConnectedAt = time.Now()
 		p.FailedAttempts = 0
@@ -103,7 +103,7 @@ func (p *Peer) UpdateStatus(status PeerStatus) {
 			p.Score = 0
 		}
 	}
-	
+
 	fmt.Printf("节点 %s 状态变更: %s -> %s\n", p.ID, oldStatus, status)
 }
 
@@ -139,12 +139,12 @@ func (p *Peer) IsAlive(timeout time.Duration) bool {
 func (p *Peer) CanConnect() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	
+
 	// 如果连续失败次数过多，需要等待一段时间
 	if p.FailedAttempts > 5 {
 		return time.Since(p.LastSeen) > time.Minute*5
 	}
-	
+
 	return p.Status == StatusDisconnected
 }
 
@@ -162,11 +162,47 @@ func (p *Peer) GetStatus() PeerStatus {
 	return p.Status
 }
 
+// SetStatus 设置节点状态
+func (p *Peer) SetStatus(status PeerStatus) {
+	p.UpdateStatus(status)
+}
+
+// IncreaseScore 增加节点评分
+func (p *Peer) IncreaseScore(delta int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.Score += delta
+}
+
+// DecreaseScore 减少节点评分
+func (p *Peer) DecreaseScore(delta int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.Score -= delta
+	if p.Score < 0 {
+		p.Score = 0
+	}
+}
+
+// GetHost 获取节点地址
+func (p *Peer) GetHost() string {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	return p.Address
+}
+
+// GetPort 获取节点端口
+func (p *Peer) GetPort() int {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	return p.Port
+}
+
 // String 返回节点的字符串表示
 func (p *Peer) String() string {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	
+
 	return fmt.Sprintf("Peer{ID: %s, Address: %s, Status: %s, Score: %d, Height: %d}",
 		p.ID, p.GetFullAddress(), p.Status, p.Score, p.BestHeight)
 }
@@ -174,17 +210,17 @@ func (p *Peer) String() string {
 // Ping 测试节点连接延迟
 func (p *Peer) Ping() error {
 	start := time.Now()
-	
+
 	conn, err := net.DialTimeout("tcp", p.GetFullAddress(), time.Second*5)
 	if err != nil {
 		p.UpdateStatus(StatusFailed)
 		return fmt.Errorf("ping失败: %v", err)
 	}
 	defer conn.Close()
-	
+
 	duration := time.Since(start)
 	p.UpdatePingTime(duration)
 	p.UpdateLastSeen()
-	
+
 	return nil
 }

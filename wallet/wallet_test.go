@@ -1,32 +1,10 @@
 package wallet
 
 import (
-	"os"
 	"testing"
 
 	"mini-coin-go/blockchain"
 )
-
-const (
-	testWalletFile   = "wallet_test.dat"
-	backupWalletFile = "wallet.dat.bak"
-)
-
-// setupTestEnvironment 设置测试环境，备份现有钱包文件
-func setupTestEnvironment() {
-	if _, err := os.Stat("wallet.dat"); err == nil {
-		os.Rename("wallet.dat", backupWalletFile)
-	}
-}
-
-// teardownTestEnvironment 清理测试环境，恢复钱包文件
-func teardownTestEnvironment() {
-	os.Remove("wallet.dat")
-
-	if _, err := os.Stat(backupWalletFile); err == nil {
-		os.Rename(backupWalletFile, "wallet.dat")
-	}
-}
 
 // TestNewWallet 测试创建新钱包
 func TestNewWallet(t *testing.T) {

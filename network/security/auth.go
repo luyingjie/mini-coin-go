@@ -22,11 +22,11 @@ type NodeAuth struct {
 
 // AuthMessage 认证消息结构
 type AuthMessage struct {
-	NodeID    string    `json:"node_id"`
-	Timestamp int64     `json:"timestamp"`
-	Challenge []byte    `json:"challenge"`
-	Signature []byte    `json:"signature"`
-	PublicKey []byte    `json:"public_key"`
+	NodeID    string `json:"node_id"`
+	Timestamp int64  `json:"timestamp"`
+	Challenge []byte `json:"challenge"`
+	Signature []byte `json:"signature"`
+	PublicKey []byte `json:"public_key"`
 }
 
 // NewNodeAuth 创建节点认证实例
@@ -36,7 +36,7 @@ func NewNodeAuth(nodeID string) (*NodeAuth, error) {
 	if err != nil {
 		return nil, fmt.Errorf("生成RSA密钥失败: %v", err)
 	}
-	
+
 	return &NodeAuth{
 		nodeID:     nodeID,
 		privateKey: privateKey,
@@ -45,18 +45,41 @@ func NewNodeAuth(nodeID string) (*NodeAuth, error) {
 	}, nil
 }
 
+// GetPublicKey 获取公钥
+func (na *NodeAuth) GetPublicKey() *rsa.PublicKey {
+	return na.publicKey
+}
+
+// AddPeer 添加对等节点
+func (na *NodeAuth) AddPeer(peerID string, publicKey *rsa.PublicKey) error {
+	na.mutex.Lock()
+	defer na.mutex.Unlock()
+
+	na.peers[peerID] = publicKey
+	return nil
+}
+
+// IsPeerAuthenticated 检查节点是否已认证
+func (na *NodeAuth) IsPeerAuthenticated(peerID string) bool {
+	na.mutex.RLock()
+	defer na.mutex.RUnlock()
+
+	_, exists := na.peers[peerID]
+	return exists
+}
+
 // GetPublicKeyBytes 获取公钥字节数组
 func (na *NodeAuth) GetPublicKeyBytes() ([]byte, error) {
 	publicKeyBytes, err := x509.MarshalPKIXPublicKey(na.publicKey)
 	if err != nil {
 		return nil, fmt.Errorf("序列化公钥失败: %v", err)
 	}
-	
+
 	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "PUBLIC KEY",
 		Bytes: publicKeyBytes,
 	})
-	
+
 	return publicKeyPEM, nil
 }
 
@@ -66,17 +89,17 @@ func (na *NodeAuth) LoadPublicKeyFromBytes(keyBytes []byte) (*rsa.PublicKey, err
 	if block == nil {
 		return nil, fmt.Errorf("解码PEM失败")
 	}
-	
+
 	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("解析公钥失败: %v", err)
 	}
-	
+
 	rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
 	if !ok {
 		return nil, fmt.Errorf("不是RSA公钥")
 	}
-	
+
 	return rsaPublicKey, nil
 }
 
@@ -85,20 +108,20 @@ func (na *NodeAuth) CreateAuthMessage(challenge []byte) (*AuthMessage, error) {
 	// 创建消息内容
 	message := fmt.Sprintf("%s:%d:%x", na.nodeID, time.Now().Unix(), challenge)
 	messageHash := sha256.Sum256([]byte(message))
-	
+
 	// 使用私钥签名
-	signature, err := rsa.SignPKCS1v15(rand.Reader, na.privateKey, 
+	signature, err := rsa.SignPKCS1v15(rand.Reader, na.privateKey,
 		0, messageHash[:])
 	if err != nil {
 		return nil, fmt.Errorf("签名失败: %v", err)
 	}
-	
+
 	// 获取公钥字节
 	publicKeyBytes, err := na.GetPublicKeyBytes()
 	if err != nil {
 		return nil, fmt.Errorf("获取公钥失败: %v", err)
 	}
-	
+
 	return &AuthMessage{
 		NodeID:    na.nodeID,
 		Timestamp: time.Now().Unix(),
@@ -114,28 +137,28 @@ func (na *NodeAuth) VerifyAuthMessage(authMsg *AuthMessage) error {
 	if time.Now().Unix()-authMsg.Timestamp > 300 {
 		return fmt.Errorf("认证消息已过期")
 	}
-	
+
 	// 加载公钥
 	publicKey, err := na.LoadPublicKeyFromBytes(authMsg.PublicKey)
 	if err != nil {
 		return fmt.Errorf("加载公钥失败: %v", err)
 	}
-	
+
 	// 重建消息内容
 	message := fmt.Sprintf("%s:%d:%x", authMsg.NodeID, authMsg.Timestamp, authMsg.Challenge)
 	messageHash := sha256.Sum256([]byte(message))
-	
+
 	// 验证签名
 	err = rsa.VerifyPKCS1v15(publicKey, 0, messageHash[:], authMsg.Signature)
 	if err != nil {
 		return fmt.Errorf("签名验证失败: %v", err)
 	}
-	
+
 	// 保存已验证的公钥
 	na.mutex.Lock()
 	na.peers[authMsg.NodeID] = publicKey
 	na.mutex.Unlock()
-	
+
 	return nil
 }
 
@@ -156,7 +179,7 @@ func (na *NodeAuth) AuthenticatePeer(peerID string, challenge []byte) (*AuthMess
 	if err != nil {
 		return nil, fmt.Errorf("创建认证消息失败: %v", err)
 	}
-	
+
 	return authMsg, nil
 }
 
@@ -164,7 +187,7 @@ func (na *NodeAuth) AuthenticatePeer(peerID string, challenge []byte) (*AuthMess
 func (na *NodeAuth) IsAuthenticated(peerID string) bool {
 	na.mutex.RLock()
 	defer na.mutex.RUnlock()
-	
+
 	_, exists := na.peers[peerID]
 	return exists
 }
@@ -173,7 +196,7 @@ func (na *NodeAuth) IsAuthenticated(peerID string) bool {
 func (na *NodeAuth) GetAuthenticatedPeers() []string {
 	na.mutex.RLock()
 	defer na.mutex.RUnlock()
-	
+
 	var peers []string
 	for peerID := range na.peers {
 		peers = append(peers, peerID)
@@ -185,20 +208,20 @@ func (na *NodeAuth) GetAuthenticatedPeers() []string {
 func (na *NodeAuth) RemovePeer(peerID string) {
 	na.mutex.Lock()
 	defer na.mutex.Unlock()
-	
+
 	delete(na.peers, peerID)
 }
 
 // SignMessage 对消息进行签名
 func (na *NodeAuth) SignMessage(message []byte) ([]byte, error) {
 	messageHash := sha256.Sum256(message)
-	
-	signature, err := rsa.SignPKCS1v15(rand.Reader, na.privateKey, 
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, na.privateKey,
 		0, messageHash[:])
 	if err != nil {
 		return nil, fmt.Errorf("签名失败: %v", err)
 	}
-	
+
 	return signature, nil
 }
 
@@ -207,18 +230,18 @@ func (na *NodeAuth) VerifyMessageSignature(peerID string, message []byte, signat
 	na.mutex.RLock()
 	publicKey, exists := na.peers[peerID]
 	na.mutex.RUnlock()
-	
+
 	if !exists {
 		return fmt.Errorf("节点未认证: %s", peerID)
 	}
-	
+
 	messageHash := sha256.Sum256(message)
-	
+
 	err := rsa.VerifyPKCS1v15(publicKey, 0, messageHash[:], signature)
 	if err != nil {
 		return fmt.Errorf("签名验证失败: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -231,10 +254,10 @@ func (na *NodeAuth) GetNodeID() string {
 func (na *NodeAuth) GetAuthStats() map[string]interface{} {
 	na.mutex.RLock()
 	defer na.mutex.RUnlock()
-	
+
 	return map[string]interface{}{
-		"node_id":            na.nodeID,
+		"node_id":             na.nodeID,
 		"authenticated_peers": len(na.peers),
-		"peer_list":          na.GetAuthenticatedPeers(),
+		"peer_list":           na.GetAuthenticatedPeers(),
 	}
 }

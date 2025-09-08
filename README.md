@@ -134,6 +134,11 @@ export NODE_ID=3000  # 切换到中心节点
 go run main.go send -from <发送方地址> -to <接收方地址> -amount 10
 ```
 
+#### 测试
+```bash
+go test -v -run TestBlockchainNetworkIntegration
+```
+
 ## 🎯 主要命令
 
 | 命令 | 说明 | 示例 |

@@ -6,7 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -35,16 +37,16 @@ func NewManager(configFile string) *Manager {
 		maxPeers:   50,
 		configFile: configFile,
 	}
-	
+
 	// 加载配置
 	manager.loadConfig()
-	
+
 	// 初始化种子节点
 	manager.initSeedNodes()
-	
+
 	// 启动心跳和清理任务
 	manager.startBackgroundTasks()
-	
+
 	return manager
 }
 
@@ -56,19 +58,19 @@ func (m *Manager) loadConfig() {
 		m.seedNodes = []string{"localhost:3000"}
 		return
 	}
-	
+
 	var config PeerConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		log.Printf("配置文件格式错误: %v，使用默认配置", err)
 		m.seedNodes = []string{"localhost:3000"}
 		return
 	}
-	
+
 	m.seedNodes = config.SeedNodes
 	if config.MaxPeers > 0 {
 		m.maxPeers = config.MaxPeers
 	}
-	
+
 	log.Printf("加载配置成功：种子节点 %v，最大节点数 %d", m.seedNodes, m.maxPeers)
 }
 
@@ -94,14 +96,16 @@ func NewPeerFromAddress(address string) *Peer {
 
 // parseAddress 解析地址
 func parseAddress(address string) (string, int, error) {
-	var host string
-	var port int
-	
-	n, err := fmt.Sscanf(address, "%s:%d", &host, &port)
-	if err != nil || n != 2 {
+	host, portStr, err := net.SplitHostPort(address)
+	if err != nil {
 		return "", 0, fmt.Errorf("地址格式无效: %s", address)
 	}
-	
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("端口格式无效: %s", portStr)
+	}
+
 	return host, port, nil
 }
 
@@ -110,23 +114,23 @@ func (m *Manager) AddPeer(peer *Peer) {
 	if peer == nil {
 		return
 	}
-	
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	// 检查是否已存在
 	if existingPeer, exists := m.peers[peer.GetFullAddress()]; exists {
 		// 更新现有节点信息
 		existingPeer.UpdateLastSeen()
 		return
 	}
-	
+
 	// 检查节点数量限制
 	if len(m.peers) >= m.maxPeers {
 		// 移除评分最低的节点
 		m.removeLowestScoredPeer()
 	}
-	
+
 	m.peers[peer.GetFullAddress()] = peer
 	log.Printf("添加新节点: %s", peer.String())
 }
@@ -135,14 +139,14 @@ func (m *Manager) AddPeer(peer *Peer) {
 func (m *Manager) removeLowestScoredPeer() {
 	var lowestPeer *Peer
 	lowestScore := int(^uint(0) >> 1) // 最大整数
-	
+
 	for _, peer := range m.peers {
 		if peer.GetScore() < lowestScore && peer.GetStatus() != StatusConnected {
 			lowestScore = peer.GetScore()
 			lowestPeer = peer
 		}
 	}
-	
+
 	if lowestPeer != nil {
 		delete(m.peers, lowestPeer.GetFullAddress())
 		log.Printf("移除低评分节点: %s", lowestPeer.String())
@@ -160,23 +164,23 @@ func (m *Manager) GetPeer(address string) *Peer {
 func (m *Manager) GetBestPeers(count int) []*Peer {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	var peers []*Peer
 	for _, peer := range m.peers {
 		if peer.CanConnect() {
 			peers = append(peers, peer)
 		}
 	}
-	
+
 	// 按评分排序
 	sort.Slice(peers, func(i, j int) bool {
 		return peers[i].GetScore() > peers[j].GetScore()
 	})
-	
+
 	if len(peers) > count {
 		peers = peers[:count]
 	}
-	
+
 	return peers
 }
 
@@ -184,27 +188,27 @@ func (m *Manager) GetBestPeers(count int) []*Peer {
 func (m *Manager) GetRandomPeers(count int) []*Peer {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	var availablePeers []*Peer
 	for _, peer := range m.peers {
 		if peer.CanConnect() {
 			availablePeers = append(availablePeers, peer)
 		}
 	}
-	
+
 	if len(availablePeers) == 0 {
 		return nil
 	}
-	
+
 	// 随机打乱
 	rand.Shuffle(len(availablePeers), func(i, j int) {
 		availablePeers[i], availablePeers[j] = availablePeers[j], availablePeers[i]
 	})
-	
+
 	if len(availablePeers) > count {
 		availablePeers = availablePeers[:count]
 	}
-	
+
 	return availablePeers
 }
 
@@ -212,7 +216,7 @@ func (m *Manager) GetRandomPeers(count int) []*Peer {
 func (m *Manager) GetAllPeers() []*Peer {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	var peers []*Peer
 	for _, peer := range m.peers {
 		peers = append(peers, peer)
@@ -224,7 +228,7 @@ func (m *Manager) GetAllPeers() []*Peer {
 func (m *Manager) GetConnectedPeers() []*Peer {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	var peers []*Peer
 	for _, peer := range m.peers {
 		if peer.GetStatus() == StatusConnected {
@@ -238,7 +242,7 @@ func (m *Manager) GetConnectedPeers() []*Peer {
 func (m *Manager) RemovePeer(address string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if peer, exists := m.peers[address]; exists {
 		delete(m.peers, address)
 		log.Printf("移除节点: %s", peer.String())
@@ -250,7 +254,7 @@ func (m *Manager) startBackgroundTasks() {
 	// 心跳检查（每30秒）
 	m.heartbeatTicker = time.NewTicker(30 * time.Second)
 	go m.heartbeatTask()
-	
+
 	// 清理任务（每5分钟）
 	m.cleanupTicker = time.NewTicker(5 * time.Minute)
 	go m.cleanupTask()
@@ -286,21 +290,21 @@ func (m *Manager) cleanupTask() {
 func (m *Manager) performCleanup() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	timeout := 10 * time.Minute
 	var toRemove []string
-	
+
 	for address, peer := range m.peers {
 		if !peer.IsAlive(timeout) && peer.GetStatus() != StatusConnected {
 			toRemove = append(toRemove, address)
 		}
 	}
-	
+
 	for _, address := range toRemove {
 		delete(m.peers, address)
 		log.Printf("清理死亡节点: %s", address)
 	}
-	
+
 	log.Printf("清理完成，当前节点数: %d", len(m.peers))
 }
 
@@ -308,17 +312,17 @@ func (m *Manager) performCleanup() {
 func (m *Manager) GetStats() map[string]interface{} {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	stats := make(map[string]interface{})
 	stats["total_peers"] = len(m.peers)
-	
+
 	statusCount := make(map[string]int)
 	for _, peer := range m.peers {
 		statusCount[peer.GetStatus().String()]++
 	}
 	stats["status_count"] = statusCount
 	stats["max_peers"] = m.maxPeers
-	
+
 	return stats
 }
 

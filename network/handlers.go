@@ -67,7 +67,10 @@ func handleBlock(request []byte, bc *blockchain.Blockchain) {
 	block := blockchain.DeserializeBlock(blockData)
 
 	fmt.Println("Recevied a new block!")
-	bc.AddBlock(block)
+	if err := bc.AddBlock(block); err != nil {
+		log.Printf("Failed to add block: %v", err)
+		return
+	}
 
 	fmt.Printf("Added block %x\n", block.Hash)
 

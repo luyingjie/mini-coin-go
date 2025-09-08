@@ -182,8 +182,8 @@ type Blockchain struct {
 	DB  *bbolt.DB
 }
 
-// AddBlock saves the block into the blockchain
-func (bc *Blockchain) AddBlock(block *Block) {
+// AddBlock 将区块保存到区块链中
+func (bc *Blockchain) AddBlock(block *Block) error {
 	err := bc.DB.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		blockInDb := b.Get(block.Hash)
@@ -195,7 +195,7 @@ func (bc *Blockchain) AddBlock(block *Block) {
 		blockData := block.Serialize()
 		err := b.Put(block.Hash, blockData)
 		if err != nil {
-			log.Panic(err)
+			return fmt.Errorf("failed to put block data: %v", err)
 		}
 
 		lastHash := b.Get([]byte("l"))
@@ -205,7 +205,7 @@ func (bc *Blockchain) AddBlock(block *Block) {
 		if block.Height > lastBlock.Height {
 			err = b.Put([]byte("l"), block.Hash)
 			if err != nil {
-				log.Panic(err)
+				return fmt.Errorf("failed to update last block hash: %v", err)
 			}
 			bc.tip = block.Hash
 		}
@@ -213,11 +213,12 @@ func (bc *Blockchain) AddBlock(block *Block) {
 		return nil
 	})
 	if err != nil {
-		log.Panic(err)
+		return fmt.Errorf("failed to add block to blockchain: %v", err)
 	}
+	return nil
 }
 
-// GetBestHeight returns the height of the latest block
+// GetBestHeight 返回最新区块的高度
 func (bc *Blockchain) GetBestHeight() int {
 	var lastBlock Block
 
@@ -236,7 +237,7 @@ func (bc *Blockchain) GetBestHeight() int {
 	return lastBlock.Height
 }
 
-// GetBlock finds a block by its hash and returns it
+// GetBlock 通过哈希查找区块并返回
 func (bc *Blockchain) GetBlock(blockHash []byte) (Block, error) {
 	var block Block
 
@@ -260,7 +261,7 @@ func (bc *Blockchain) GetBlock(blockHash []byte) (Block, error) {
 	return block, nil
 }
 
-// GetBlockHashes returns a list of hashes of all the blocks in the chain
+// GetBlockHashes 返回链中所有区块的哈希列表
 func (bc *Blockchain) GetBlockHashes() [][]byte {
 	var blocks [][]byte
 	bci := bc.Iterator()
@@ -278,7 +279,7 @@ func (bc *Blockchain) GetBlockHashes() [][]byte {
 	return blocks
 }
 
-// MineBlock mines a new block with the provided transactions
+// MineBlock 使用提供的交易挖掘一个新区块
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	var lastHash []byte
 	var lastHeight int
@@ -329,7 +330,7 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	return newBlock
 }
 
-// NewBlockchain creates a new Blockchain with genesis Block
+// NewBlockchain 创建一个带有创世区块的新区块链
 func NewBlockchain(address, nodeID string) *Blockchain {
 	dbFile := fmt.Sprintf("blockchain_%s.db", nodeID)
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
@@ -381,7 +382,7 @@ func NewBlockchain(address, nodeID string) *Blockchain {
 	return &bc
 }
 
-// FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
+// FindUTXO 查找所有未花费的交易输出并返回已移除花费输出的交易
 func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 	UTXO := make(map[string]TXOutputs)
 	spentTXOs := make(map[string][]int)
@@ -395,7 +396,7 @@ func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 
 		Outputs:
 			for outIdx, out := range tx.Vout {
-				// Was the output spent?
+				// 输出是否已被花费？
 				if spentTXOs[txID] != nil {
 					for _, spentOutIdx := range spentTXOs[txID] {
 						if spentOutIdx == outIdx {
@@ -425,7 +426,7 @@ func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
 	return UTXO
 }
 
-// NewUTXOTransaction creates a new transaction
+// NewUTXOTransaction 创建一个新交易
 func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
@@ -439,7 +440,7 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 		log.Panic("ERROR: Not enough funds")
 	}
 
-	// Build a list of inputs
+	// 构建输入列表
 	for txid, outs := range validOutputs {
 		txID, err := hex.DecodeString(txid)
 		if err != nil {
@@ -452,10 +453,10 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 		}
 	}
 
-	// Build a list of outputs
+	// 构建输出列表
 	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
-		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
+		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // 找零
 	}
 
 	tx := Transaction{nil, inputs, outputs}
@@ -464,20 +465,20 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 	return &tx
 }
 
-// BlockchainIterator is used to iterate over blockchain blocks
+// BlockchainIterator 用于遍历区块链区块
 type BlockchainIterator struct {
 	currentHash []byte
 	DB          *bbolt.DB
 }
 
-// Iterator returns a BlockchainIterator
+// Iterator 返回一个区块链迭代器
 func (bc *Blockchain) Iterator() *BlockchainIterator {
 	bci := &BlockchainIterator{bc.tip, bc.DB}
 
 	return bci
 }
 
-// Next returns next block starting from the tip
+// Next 从链尖开始返回下一个区块
 func (i *BlockchainIterator) Next() *Block {
 	var block *Block
 
@@ -497,7 +498,7 @@ func (i *BlockchainIterator) Next() *Block {
 	return block
 }
 
-// FindTransaction finds a transaction by its ID
+// FindTransaction 通过ID查找交易
 func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 	bci := bc.Iterator()
 
@@ -518,7 +519,7 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 	return Transaction{}, fmt.Errorf("Transaction is not found")
 }
 
-// SignTransaction signs inputs of a Transaction
+// SignTransaction 对交易的输入进行签名
 func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTXs := make(map[string]Transaction)
 
@@ -533,7 +534,7 @@ func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey)
 	tx.Sign(privKey, prevTXs)
 }
 
-// VerifyTransaction verifies transaction input signatures
+// VerifyTransaction 验证交易输入签名
 func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
 	if tx.IsCoinbase() {
 		return true

@@ -8,21 +8,23 @@ import (
 const (
 	testDBFile   = "blockchain_test.db"
 	backupDBFile = "blockchain.db.bak"
+	testNodeID   = "test_node"
 )
 
 // setupTestEnvironment 设置测试环境，备份现有数据文件
 func setupTestEnvironment() {
-	if _, err := os.Stat("blockchain.db"); err == nil {
-		os.Rename("blockchain.db", backupDBFile)
+	if _, err := os.Stat("blockchain_test_node.db"); err == nil {
+		os.Rename("blockchain_test_node.db", "blockchain_test_node.db.bak")
 	}
 }
 
 // teardownTestEnvironment 清理测试环境，恢复数据文件
 func teardownTestEnvironment() {
-	os.Remove("blockchain.db")
+	os.Remove("blockchain_test_node.db")
+	os.Remove("chainstate_test_node.db")
 
-	if _, err := os.Stat(backupDBFile); err == nil {
-		os.Rename(backupDBFile, "blockchain.db")
+	if _, err := os.Stat("blockchain_test_node.db.bak"); err == nil {
+		os.Rename("blockchain_test_node.db.bak", "blockchain_test_node.db")
 	}
 }
 
@@ -32,7 +34,7 @@ func TestNewBlockchain(t *testing.T) {
 	defer teardownTestEnvironment()
 
 	address := "17BJsKiaasXt4S7EKe9PhtZAZF74VJZwGv"
-	bc := NewBlockchain(address)
+	bc := NewBlockchain(address, testNodeID)
 	defer bc.DB.Close()
 
 	if bc == nil {
@@ -50,14 +52,14 @@ func TestBlockchain_MineBlock(t *testing.T) {
 	defer teardownTestEnvironment()
 
 	address := "17BJsKiaasXt4S7EKe9PhtZAZF74VJZwGv"
-	bc := NewBlockchain(address)
+	bc := NewBlockchain(address, testNodeID)
 	defer bc.DB.Close()
 
 	// 创建一个新交易
 	tx := NewCoinbaseTX(address, "")
 
 	// 挖矿
-	bc.MineBlock([]*Transaction{tx}, address)
+	bc.MineBlock([]*Transaction{tx})
 
 	// 验证区块链长度
 	iterator := bc.Iterator()
@@ -82,7 +84,7 @@ func TestUTXOSet_Reindex(t *testing.T) {
 	defer teardownTestEnvironment()
 
 	address := "17BJsKiaasXt4S7EKe9PhtZAZF74VJZwGv"
-	bc := NewBlockchain(address)
+	bc := NewBlockchain(address, testNodeID)
 	defer bc.DB.Close()
 
 	utxoSet := UTXOSet{bc}

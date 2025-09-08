@@ -13,26 +13,27 @@ import (
 
 func debugTransaction() {
 	// 清理测试文件
-	os.Remove("blockchain.db")
-	os.Remove("wallet.dat")
+	os.Remove("blockchain_debug.db")
+	os.Remove("wallet_debug.dat")
+	os.Remove("chainstate_debug.db")
 
 	fmt.Println("=== 创建钱包和区块链 ===")
 
 	// 创建钱包
-	wallets, err := wallet.NewWallets()
+	wallets, err := wallet.NewWallets("debug")
 	if err != nil {
 		log.Panic(err)
 	}
 
 	addressA := wallets.CreateWallet()
 	addressB := wallets.CreateWallet()
-	wallets.SaveToFile()
+	wallets.SaveToFile("debug")
 
 	fmt.Printf("钱包A地址: %s\n", addressA)
 	fmt.Printf("钱包B地址: %s\n", addressB)
 
 	// 创建区块链，给A地址100币
-	bc := blockchain.NewBlockchain(addressA)
+	bc := blockchain.NewBlockchain(addressA, "debug")
 	defer bc.DB.Close()
 
 	utxoSet := blockchain.UTXOSet{bc}
@@ -72,7 +73,7 @@ func debugTransaction() {
 	}
 
 	// 挖矿（不给奖励）
-	bc.MineBlockWithoutReward([]*blockchain.Transaction{tx})
+	bc.MineBlock([]*blockchain.Transaction{tx})
 	utxoSet.Reindex()
 
 	// 检查交易后余额

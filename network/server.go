@@ -11,8 +11,7 @@ import (
 )
 
 const (
-	protocol      = "tcp"
-	commandLength = 12
+	protocol = "tcp"
 )
 
 var (
